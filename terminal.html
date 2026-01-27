@@ -776,17 +776,28 @@ async function loadStrats(){
     try{
         const strats=await api('/api/strategies');_stratData=strats;
         const positions=await api('/api/positions');
-        // Count open trades per strategy (heuristic based on position symbols)
+        // Count open trades per strategy — group by underlying+expiry first
         const stratOpenTrades={};
+        const _groups={};
         (positions||[]).forEach(p=>{
-            const sym=p.symbol||'';const isOpt=sym.length>10;
-            if(!isOpt)return;
-            // Heuristic: multi-leg = iron_condor, single put sell = wheel, etc.
-            const side=p.side||'';const isPut=sym.includes('P');const isCall=sym.includes('C');
-            let guess='wheel';
-            if(side==='short'&&isPut)guess='wheel';
-            else if(side==='short'&&isCall)guess='wheel';
-            stratOpenTrades[guess]=(stratOpenTrades[guess]||0)+1;
+            const sym=p.symbol||'';
+            const m=sym.match(/^([A-Z]+)(\d{6})([PC])/);
+            if(!m)return;
+            const key=m[1]+'_'+m[2];
+            if(!_groups[key])_groups[key]={puts:[],calls:[],shortPuts:0,shortCalls:0,longPuts:0,longCalls:0};
+            const g=_groups[key];const isShort=parseInt(p.qty)<0;
+            if(m[3]==='P'){g.puts.push(p);if(isShort)g.shortPuts++;else g.longPuts++}
+            else{g.calls.push(p);if(isShort)g.shortCalls++;else g.longCalls++}
+        });
+        Object.values(_groups).forEach(g=>{
+            let strat='wheel';
+            if(g.shortPuts===1&&g.longPuts===1&&g.shortCalls===1&&g.longCalls===1)strat='iron_condor';
+            else if(g.shortPuts===1&&g.longPuts===1&&g.calls.length===0)strat='vertical';
+            else if(g.shortCalls===1&&g.longCalls===1&&g.puts.length===0)strat='vertical';
+            else if(g.shortPuts===1&&g.shortCalls===1&&g.puts.length===1&&g.calls.length===1)strat='earnings';
+            else if(g.shortPuts===1&&g.longPuts===0&&g.calls.length===0)strat='wheel';
+            else if(g.shortCalls===1&&g.longCalls===0&&g.puts.length===0)strat='wheel';
+            stratOpenTrades[strat]=(stratOpenTrades[strat]||0)+1;
         });
         const grid=document.getElementById('strat-grid');let h='';
         Object.entries(strats).forEach(([k,v])=>{
