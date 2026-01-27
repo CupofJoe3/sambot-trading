@@ -729,6 +729,15 @@ async function runScan(){
             <td style="font-weight:700;color:${x.score>70?'var(--green)':'var(--text)'}">${x.score.toFixed(0)}</td></tr>`});
         document.getElementById('scan-body').innerHTML=h;
         addLog(`Scan complete: ${r.length} symbols analyzed`,'trade');
+        // Trigger trade execution via Firebase command
+        if(_fbDb){
+            await _fbDb.ref('trading/commands/scan_execute').set({
+                trigger: true,
+                timestamp: new Date().toISOString(),
+                source: 'dashboard'
+            });
+            addLog('🚀 Trade execution triggered — bot will pick up signals','trade');
+        }
     }catch(e){addLog('Scan failed: '+e.message,'error')}
 }
 
