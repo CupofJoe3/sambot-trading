@@ -172,6 +172,8 @@
         ::-webkit-scrollbar-track{background:var(--bg)}
         ::-webkit-scrollbar-thumb{background:#2a2a3a;border-radius:1px}
     </style>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -429,13 +431,34 @@ function showTab(el,id){
 }
 
 // ═══ API ═══
-async function api(p){const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);try{
-const url=API?API+p+'.json':p+'.json';
-const r=await fetch(url,{signal:c.signal});clearTimeout(t);
-const ct=r.headers.get('content-type')||'';
-if(!ct.includes('json')){return {error:'Not available (static mode)'};}
-return r.json();
-}catch(e){clearTimeout(t);throw e}}
+// Firebase setup
+let _fb=null,_fbDb=null;
+try{
+    firebase.initializeApp({databaseURL:"https://sambot-tasks-default-rtdb.firebaseio.com"});
+    _fbDb=firebase.database();
+    console.log('Firebase connected');
+}catch(e){console.warn('Firebase init failed:',e)}
+
+async function api(p){
+    // Convert path like /api/status to firebase key trading/status
+    const key='trading/'+p.replace('/api/','').replace(/-/g,'_');
+    if(_fbDb){
+        try{
+            const snap=await _fbDb.ref(key).once('value');
+            const val=snap.val();
+            if(val!==null)return val;
+        }catch(e){console.warn('Firebase read failed:',e)}
+    }
+    // Fallback to static JSON
+    const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);
+    try{
+        const url=API?API+p+'.json':p+'.json';
+        const r=await fetch(url,{signal:c.signal});clearTimeout(t);
+        const ct=r.headers.get('content-type')||'';
+        if(!ct.includes('json'))return{error:'Not available'};
+        return r.json();
+    }catch(e){clearTimeout(t);throw e}
+}
 async function apiPost(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
 
 // ═══ MASTER ═══
