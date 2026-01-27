@@ -1059,7 +1059,22 @@ loadChartIndex().then(()=>{loadOrders()});loadStrats();loadBT();setTimeout(initC
 // Load scan log immediately then every 15s
 setTimeout(()=>{lastScanLogLen=0;loadScanLog()},2000);
 setTimeout(detectRegime,4000);
-setInterval(refreshAll,15000);setInterval(loadScanLog,15000);setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}),1000);
+setInterval(refreshAll,30000); // Full refresh every 30s
+// Fast live data refresh every 5s from Firebase
+if(_fbDb){
+    _fbDb.ref('trading/live').on('value',snap=>{
+        const d=snap.val();if(!d)return;
+        const eq=d.equity,pnl=eq-100000;
+        document.getElementById('equity').textContent=fmt(eq);document.getElementById('equity').className='card-v '+cls(pnl);
+        document.getElementById('eq-sub').innerHTML=`Init: ${fmt(100000)} | <span class="${cls(pnl)}">${fmtPct(pnl/1000)}</span>`;
+        document.getElementById('bp').textContent=fmt(d.buying_power);
+        document.getElementById('bp-sub').textContent=`${(d.buying_power/eq*100).toFixed(0)}% available`;
+        document.getElementById('daily-pnl').textContent=fmt(pnl);document.getElementById('daily-pnl').className='card-v '+cls(pnl);
+        document.getElementById('perf-open').textContent=d.positions||0;
+        document.getElementById('perf-cash').textContent=fmtK(d.cash);
+        document.getElementById('perf-bp').textContent=fmtK(d.buying_power);
+    });
+}setInterval(loadScanLog,15000);setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}),1000);
 setInterval(detectRegime,300000);
 </script>
 </body>
