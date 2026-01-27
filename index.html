@@ -430,14 +430,11 @@ function showTab(el,id){
 
 // ═══ API ═══
 async function api(p){const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);try{
-if(API){
-const r=await fetch(API+p,{signal:c.signal});clearTimeout(t);return r.json();
-}else{
-const r=await fetch(p+'.json',{signal:c.signal});clearTimeout(t);
+const url=API?API+p+'.json':p+'.json';
+const r=await fetch(url,{signal:c.signal});clearTimeout(t);
 const ct=r.headers.get('content-type')||'';
 if(!ct.includes('json')){return {error:'Not available (static mode)'};}
 return r.json();
-}
 }catch(e){clearTimeout(t);throw e}}
 async function apiPost(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
 
