@@ -348,7 +348,7 @@
 <div class="panel" id="p-journal">
     <div class="card">
         <div class="card-h"><span class="card-t">Trade Journal</span></div>
-        <table><thead><tr><th>Date</th><th>Strategy</th><th>Symbol</th><th>Entry Price</th><th>Status</th><th>P&L</th><th>Reason</th></tr></thead>
+        <table><thead><tr><th>Date & Time</th><th>Strategy</th><th>Symbol</th><th>Entry Price</th><th>Status</th><th>Live P&L</th><th>Reason</th></tr></thead>
         <tbody id="j-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Loading journal...</td></tr></tbody></table>
     </div>
 </div>
@@ -1343,20 +1343,34 @@ function updateEquityChart(equity){
 async function loadJournal(){
     try{
         const orders=await api('/api/orders');
+        const positions=await api('/api/positions');
         const body=document.getElementById('j-body');
         if(!orders||!orders.length||orders.error){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No trades yet</td></tr>';return}
-        // Filter to filled orders and build journal entries
+        
+        // Build live P&L lookup from positions, grouped by underlying
+        const livePL={};
+        (positions||[]).forEach(p=>{
+            const sym=p.symbol||'';const m=sym.match(/^([A-Z]+)/);
+            const und=m?m[1]:sym;
+            if(!livePL[und])livePL[und]={pnl:0,pnlPct:0,mv:0,cost:0};
+            livePL[und].pnl+=parseFloat(p.unrealized_pl||0);
+            livePL[und].mv+=parseFloat(p.market_value||0);
+            livePL[und].cost+=parseFloat(p.cost_basis||0);
+        });
+        Object.values(livePL).forEach(v=>{v.pnlPct=v.cost!==0?(v.pnl/Math.abs(v.cost)*100):0});
+        
         const filled=orders.filter(o=>o.status==='filled'||o.status==='partially_filled');
         if(!filled.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled trades yet</td></tr>';return}
         let h='';
         for(const o of filled.slice(0,100)){
-            const date=new Date(o.filled_at||o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+            const dt=new Date(o.filled_at||o.created_at);
+            const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+            const timeStr=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
             const sym=o.symbol||'';
             const legs=o.legs||[];
             const isMleg=o.order_class==='mleg'&&legs.length>0;
             const underlying=sym.length>10?(sym.match(/^[A-Z]+/)?.[0]||sym):(isMleg&&legs.length?(legs[0].symbol||'').match(/^[A-Z]+/)?.[0]||'?':sym);
             
-            // Detect strategy
             let strat='STOCK';
             if(isMleg){
                 const puts=legs.filter(l=>(l.symbol||'').includes('P'));
@@ -1375,19 +1389,28 @@ async function loadJournal(){
             }
             
             const entryPrice=o.filled_avg_price?fmt(parseFloat(o.filled_avg_price)):'—';
-            const pnl=parseFloat(o.realized_pl||o.pnl||0);
-            const pnlStr=pnl!==0?fmt(pnl):'—';
-            const pnlCls=pnl>0?'pos':pnl<0?'neg':'';
+            
+            // Live P&L from positions
+            const lp=livePL[underlying];
+            let pnlStr='—',pnlCls='';
+            if(lp){
+                pnlStr=`${fmt(lp.pnl)} <span style="font-size:10px;opacity:0.7">(${lp.pnlPct>=0?'+':''}${lp.pnlPct.toFixed(1)}%)</span>`;
+                pnlCls=lp.pnl>0?'pos':lp.pnl<0?'neg':'';
+            }else{
+                // Position closed — check realized
+                const rpl=parseFloat(o.realized_pl||0);
+                if(rpl!==0){pnlStr=fmt(rpl);pnlCls=rpl>0?'pos':'neg';}
+            }
+            
             const sc=o.status==='filled'?'pos':'neu';
             
-            // Reason heuristic
             let reason=o.side==='sell'?'Premium collection':'Directional';
             if(strat.includes('Condor'))reason='Range-bound premium';
             if(strat.includes('Wheel'))reason=o.side==='sell'?(sym.includes('P')?'Bullish premium / want shares':'Covered call income'):'Assignment';
             if(strat.includes('Spread'))reason='Directional credit';
             
             h+=`<tr>
-                <td>${date}</td>
+                <td>${dateStr}<br><span style="color:var(--dim);font-size:10px">${timeStr}</span></td>
                 <td style="color:#ff8c00;font-size:11px">${strat}</td>
                 <td style="cursor:pointer;color:var(--cyan);text-decoration:underline" onclick="loadStockChart('${underlying}')">${underlying} ${chartLink(underlying)}</td>
                 <td>${entryPrice}</td>
