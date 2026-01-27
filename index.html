@@ -535,10 +535,13 @@ function updateAnalysis(s,p,pnl){
     // VIX / SPY
     if(s.vix) lines.push(`VIX: ${s.vix.toFixed(1)} | SPY: $${s.spy_price?.toFixed(2)||'—'}`);
     
-    // Position summary
+    // Position summary — count trades not legs
     if(p.length){
+        const _tg=new Set();
+        p.forEach(x=>{const m=(x.symbol||'').match(/^([A-Z]+)(\d{6})/);_tg.add(m?m[1]+'_'+m[2]:x.symbol)});
+        const tradeCount=_tg.size;
         const totalPL=p.reduce((s,x)=>s+parseFloat(x.unrealized_pl||0),0);
-        lines.push(`${p.length} position${p.length>1?'s':''} | Unrealized: <span class="${cls(totalPL)}">${fmt(totalPL)}</span>`);
+        lines.push(`${tradeCount} trade${tradeCount>1?'s':''} (${p.length} legs) | Unrealized: <span class="${cls(totalPL)}">${fmt(totalPL)}</span>`);
     }else{
         lines.push('No open positions — scanning for setups');
     }
