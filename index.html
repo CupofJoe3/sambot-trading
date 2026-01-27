@@ -465,7 +465,13 @@ async function refreshAll(){
         document.getElementById('perf-pl').textContent=fmt(pnl);document.getElementById('perf-pl').className='gk-val '+cls(pnl);
         document.getElementById('perf-pct').textContent=fmtPct(pnl/1000);document.getElementById('perf-pct').className='gk-val '+cls(pnl);
         document.getElementById('perf-trades').textContent=Object.values(status.strategies).reduce((s,v)=>s+(v.total_trades||0),0);
-        document.getElementById('perf-open').textContent=positions.length;
+        // Count trades not legs: group options by underlying+expiry
+        const _tradeGroups=new Set();
+        (positions||[]).forEach(p=>{
+            const m=(p.symbol||'').match(/^([A-Z]+)(\d{6})/);
+            _tradeGroups.add(m?m[1]+'_'+m[2]:p.symbol);
+        });
+        document.getElementById('perf-open').textContent=_tradeGroups.size;
         document.getElementById('perf-cash').textContent=fmtK(cash);
         document.getElementById('perf-bp').textContent=fmtK(bp);
         const dd=status.risk.drawdown;
