@@ -635,8 +635,37 @@ function renderPos(pos,id,pct=false){
             desc=`<b>Sell $${sp?.strike} Put</b> — Exp ${g.expShort}`;
             desc+=`<br><span style="color:var(--dim)">Premium:</span> $${premium.toFixed(2)} · <span style="color:var(--dim)">Breakeven:</span> $${(sp?.strike-premium).toFixed(2)}`;
             desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE. If assigned, own shares at discount.`;
+        }else if(strategy==='PUT SPREAD'){
+            // Bull put spread
+            const sp=shortPuts[0]?.strike||0,lp=longPuts[0]?.strike||0;
+            const width=sp-lp;
+            const credit=Math.abs(groupCost)/100;
+            const maxLoss=width-credit;
+            const breakeven=sp-credit;
+            desc=`<b>Bull Put Spread</b>: Sell $${sp} / Buy $${lp} Put — Exp ${g.expShort}`;
+            desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Max loss:</span> $${(maxLoss*100).toFixed(0)} · <span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}`;
+            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit ($${(credit*0.5).toFixed(2)} debit) or 7 DTE`;
+            desc+=`<br><span style="color:var(--dim)">Thesis:</span> ${g.underlying} stays above $${sp}. Bullish bias, collect theta.`;
+            desc+=`<br><span class="neg">Stop:</span> Close if loss exceeds 2x credit ($${(credit*2).toFixed(2)})`;
+        }else if(strategy==='CALL SPREAD'){
+            // Bear call spread
+            const sc=shortCalls[0]?.strike||0,lc=longCalls[0]?.strike||0;
+            const width=lc-sc;
+            const credit=Math.abs(groupCost)/100;
+            const maxLoss=width-credit;
+            const breakeven=sc+credit;
+            desc=`<b>Bear Call Spread</b>: Sell $${sc} / Buy $${lc} Call — Exp ${g.expShort}`;
+            desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Max loss:</span> $${(maxLoss*100).toFixed(0)} · <span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}`;
+            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE`;
+            desc+=`<br><span style="color:var(--dim)">Thesis:</span> ${g.underlying} stays below $${sc}. Bearish bias, collect theta.`;
+            desc+=`<br><span class="neg">Stop:</span> Close if loss exceeds 2x credit ($${(credit*2).toFixed(2)})`;
         }else{
-            desc=g.legs.map(l=>`${parseInt(l.qty)<0?'Short':'Long'} $${l.strike} ${l.type}`).join(' · ')+` — Exp ${g.expShort}`;
+            // Generic multi-leg
+            const credit=Math.abs(groupCost)/100;
+            desc=g.legs.map(l=>`${parseInt(l.qty)<0?'Sell':'Buy'} $${l.strike} ${l.type}`).join(' · ')+` — Exp ${g.expShort}`;
+            desc+=`<br><span style="color:var(--dim)">Net credit:</span> $${credit.toFixed(2)}`;
+            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE`;
+            desc+=`<br><span class="neg">Stop:</span> Close if loss exceeds 2x credit`;
         }
         
         // Group header row
@@ -871,24 +900,45 @@ async function loadOrders(){
                     <td>multi</td><td>${o.qty||1}x4</td><td>${o.type||''}</td><td>${price}</td>
                     <td>${o.filled_qty||'0'}/${o.qty||''}</td><td class="${sc}">${o.status||''}</td></tr>`;
                 
-                // Trade explanation row
+                // Trade explanation row — dynamic by strategy
+                let setupDesc='',targetDesc='',thesisDesc='';
+                const stopAt2x=`<span class="neg">Stop:</span> Close if loss &gt; 2x credit ($${(credit*2).toFixed(2)})`;
+                const closeRule=`<span style="color:var(--dim)">Close at:</span> <b>50% profit ($${profitTarget50.toFixed(2)} debit)</b> or 7 DTE`;
+                
+                if(strategy==='🦅 IRON CONDOR'){
+                    setupDesc=`<span style="color:var(--dim)">Sell</span> <b>$${spStrike}P/$${scStrike}C</b> · <span style="color:var(--dim)">Buy</span> <b>$${bpStrike}P/$${bcStrike}C</b> wings`;
+                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (stays $${spStrike}–$${scStrike})<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br>${closeRule}`;
+                    thesisDesc=`${underlying} stays range-bound. Collect theta. ${stopAt2x}`;
+                }else if(strategy==='PUT SPREAD'){
+                    const breakeven=spStrike-credit;
+                    setupDesc=`<b>Bull Put Spread</b>: Sell $${spStrike}P / Buy $${bpStrike}P`;
+                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (stays above $${spStrike})<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br><span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}<br>${closeRule}`;
+                    thesisDesc=`Bullish on ${underlying}. Price stays above $${spStrike}. Collect theta. ${stopAt2x}`;
+                }else if(strategy==='CALL SPREAD'){
+                    const breakeven=scStrike+credit;
+                    setupDesc=`<b>Bear Call Spread</b>: Sell $${scStrike}C / Buy $${bcStrike}C`;
+                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (stays below $${scStrike})<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br><span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}<br>${closeRule}`;
+                    thesisDesc=`Bearish on ${underlying}. Price stays below $${scStrike}. Collect theta. ${stopAt2x}`;
+                }else{
+                    setupDesc=legs.map(l=>`${l.side==='sell'?'Sell':'Buy'} ${l.symbol?.slice(-8)||''}`).join(' · ');
+                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)}<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br>${closeRule}`;
+                    thesisDesc=`Premium collection strategy. ${stopAt2x}`;
+                }
+                
                 h+=`<tr style="background:rgba(255,140,0,0.03)"><td colspan="8" style="padding:8px 12px;font-size:11px;line-height:1.6;color:var(--text)">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                         <div>
                             <b style="color:#ff8c00">📋 Trade Setup</b><br>
-                            <span style="color:var(--dim)">Sell</span> ${underlying} <b>$${spStrike}/$${scStrike}</b> put/call spread<br>
-                            <span style="color:var(--dim)">Buy</span> ${underlying} <b>$${bpStrike}/$${bcStrike}</b> wings (protection)<br>
+                            ${setupDesc}<br>
                             <span style="color:var(--dim)">Exp:</span> ${expStr} | <span style="color:var(--dim)">Credit:</span> <span class="pos">$${credit.toFixed(2)}</span>
                         </div>
                         <div>
                             <b style="color:#ff8c00">🎯 Targets</b><br>
-                            <span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (${underlying} stays between $${spStrike}-$${scStrike})<br>
-                            <span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)} (breach either wing)<br>
-                            <span style="color:var(--dim)">Close at:</span> <b>50% profit ($${profitTarget50.toFixed(2)} debit)</b> or 7 DTE
+                            ${targetDesc}
                         </div>
                     </div>
                     <div style="margin-top:6px;color:var(--dim);font-size:10px">
-                        <b>Thesis:</b> ${underlying} stays range-bound. Collect premium from time decay (theta). Close at 50% profit or before expiry.
+                        <b>Thesis:</b> ${thesisDesc}
                     </div>
                 </td></tr>`;
                 
