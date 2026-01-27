@@ -321,10 +321,23 @@
 <!-- PERFORMANCE -->
 <div class="panel" id="p-performance">
     <div class="grid g4" style="margin-bottom:14px">
-        <div class="card"><div class="card-t">Total Return</div><div class="card-v pos" id="perf-ret" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Sharpe Ratio</div><div class="card-v neu" id="perf-sharpe" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Total P&L</div><div class="card-v pos" id="perf-ret" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Win / Loss</div><div class="card-v neu" id="perf-winloss" style="margin-top:8px">--</div></div>
         <div class="card"><div class="card-t">Win Rate</div><div class="card-v" id="perf-wr" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Profit Factor</div><div class="card-v" id="perf-pf" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Avg Duration</div><div class="card-v" id="perf-dur" style="margin-top:8px">--</div></div>
+    </div>
+    <div class="grid g2" style="margin-bottom:14px">
+        <div class="card"><div class="card-t">Best Trade</div><div id="perf-best" style="margin-top:8px;font-size:12px;color:var(--green)">--</div></div>
+        <div class="card"><div class="card-t">Worst Trade</div><div id="perf-worst" style="margin-top:8px;font-size:12px;color:var(--red)">--</div></div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+        <div class="card-h"><span class="card-t">Strategy Breakdown</span></div>
+        <table><thead><tr><th>Strategy</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>P&L</th><th>Avg P&L</th></tr></thead>
+        <tbody id="perf-strat-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px">Loading...</td></tr></tbody></table>
+    </div>
+    <div class="card">
+        <div class="card-h"><span class="card-t">Equity Curve</span></div>
+        <div id="perf-eq-chart" style="height:250px"></div>
     </div>
 </div>
 
@@ -335,8 +348,8 @@
 <div class="panel" id="p-journal">
     <div class="card">
         <div class="card-h"><span class="card-t">Trade Journal</span></div>
-        <table><thead><tr><th>Date</th><th>Strategy</th><th>Symbol</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Reason</th></tr></thead>
-        <tbody id="j-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Journal populates with trades</td></tr></tbody></table>
+        <table><thead><tr><th>Date</th><th>Strategy</th><th>Symbol</th><th>Entry Price</th><th>Status</th><th>P&L</th><th>Reason</th></tr></thead>
+        <tbody id="j-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Loading journal...</td></tr></tbody></table>
     </div>
 </div>
 
@@ -715,33 +728,195 @@ function renderPos(pos,id,pct=false){
 
 // ═══ STRATEGIES ═══
 const STRAT_MAP={
-    iron_condor:{name:'Iron Condor',icon:'🦅',desc:'45 DTE, 12Δ, Tastytrade rules. IWM/DIA.',badge:'g',detail:'Sells OTM puts+calls with wings. Best on range-bound ETFs.'},
-    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle, 30 DTE, large caps',badge:'g',detail:'Cash-secured puts, covered calls when assigned. Our #1 strategy.'},
-    earnings:{name:'Earnings Crusher',icon:'📊',desc:'Pre-earnings IV crush capture',badge:'g',detail:'Sells strangles/ICs before earnings for IV crush.'},
-    bwb:{name:'Broken Wing Butterfly',icon:'🦋',desc:'Directional credit spread',badge:'y',detail:'Asymmetric butterfly for directional bias with credit.'},
-    gamma_scalp:{name:'Gamma Scalp',icon:'⚡',desc:'Long gamma + delta hedge',badge:'y',detail:'Buy straddles, hedge delta. High vol regime.'},
-    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium selling',badge:'y',detail:'Same-day expiry. SPX/SPY only.'},
+    iron_condor:{name:'Iron Condor',icon:'🦅',desc:'45 DTE, 12Δ, Tastytrade rules. IWM/DIA.',badge:'g',
+        detail:'Sells OTM puts+calls with wings. Best on range-bound ETFs.',
+        howItWorks:'Sell OTM put spread + OTM call spread simultaneously. Collect premium from both sides. Profit if underlying stays within the short strikes.',
+        entry:'IV Rank > 30, IVR > median, VRP positive. Select 12-delta strikes at 45 DTE on ETFs (IWM, DIA, SPY).',
+        exit:'Close at 50% max profit OR 21 DTE remaining OR stop at 2x credit received.',
+        idealConditions:'Range-bound / low-trend markets. High IV rank. Neutral outlook.',
+        allocation:25},
+    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle, 30 DTE, large caps',badge:'g',
+        detail:'Cash-secured puts, covered calls when assigned. Our #1 strategy.',
+        howItWorks:'Sell cash-secured puts on quality stocks. If assigned, sell covered calls. Repeat. Generates income in any market.',
+        entry:'Stock is above 200 SMA, RSI < 70, IV Rank > 20. Sell 30 DTE puts at 25-30 delta on large caps.',
+        exit:'Close CSP at 50% profit or 7 DTE. If assigned, sell CC at cost basis strike. Close CC at 50% or expiry.',
+        idealConditions:'Bullish or neutral market. Stocks you\'d want to own. Moderate IV.',
+        allocation:30},
+    earnings:{name:'Earnings Crusher',icon:'📊',desc:'Pre-earnings IV crush capture',badge:'g',
+        detail:'Sells strangles/ICs before earnings for IV crush.',
+        howItWorks:'Sell premium 1-5 days before earnings when IV is inflated. IV crushes after the announcement regardless of direction.',
+        entry:'Earnings in 1-5 days. IV > 2x HV. Sell iron condors or strangles at 16-delta.',
+        exit:'Close morning after earnings announcement. Target: capture 50%+ of IV crush.',
+        idealConditions:'Earnings season. Stocks with history of IV overstatement. Large caps with liquid options.',
+        allocation:15},
+    bwb:{name:'Broken Wing Butterfly',icon:'🦋',desc:'Directional credit spread',badge:'y',
+        detail:'Asymmetric butterfly for directional bias with credit.',
+        howItWorks:'Skewed butterfly where one wing is wider, creating a directional bias. Entered for a credit so worst case is small loss.',
+        entry:'Directional bias from regime engine. 30-45 DTE. Place at expected move boundary.',
+        exit:'Close at 50% profit or 14 DTE. Stop if underlying moves through the body strike.',
+        idealConditions:'Clear directional bias. Moderate IV. Trending market.',
+        allocation:10},
+    gamma_scalp:{name:'Gamma Scalp',icon:'⚡',desc:'Long gamma + delta hedge',badge:'y',
+        detail:'Buy straddles, hedge delta. High vol regime.',
+        howItWorks:'Buy ATM straddles and continuously delta-hedge the position. Profits from large moves in either direction via gamma.',
+        entry:'VIX > 25 or regime = CRISIS. Buy ATM straddles on SPY/QQQ. Delta hedge every $1-2 move.',
+        exit:'Close after 5-10 days or when VIX returns below 20. Target: scalping profits exceed theta decay.',
+        idealConditions:'High volatility regime. Crisis or sharp sell-off. VIX elevated.',
+        allocation:10},
+    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium selling',badge:'y',
+        detail:'Same-day expiry. SPX/SPY only.',
+        howItWorks:'Sell far OTM credit spreads on SPX/SPY expiring same day. Theta decay is extreme on 0DTE options.',
+        entry:'After 10 AM ET. Sell 5-10 delta iron condors on SPX 0DTE. Only on low-event days.',
+        exit:'Let expire worthless or close at 50% profit. Hard stop at 3x credit.',
+        idealConditions:'Low VIX day. No FOMC/CPI. After morning volatility settles. Range-bound intraday.',
+        allocation:10},
 };
+let _stratData={};
 async function loadStrats(){
     try{
-        const strats=await api('/api/strategies');const grid=document.getElementById('strat-grid');let h='';
+        const strats=await api('/api/strategies');_stratData=strats;
+        const positions=await api('/api/positions');
+        // Count open trades per strategy (heuristic based on position symbols)
+        const stratOpenTrades={};
+        (positions||[]).forEach(p=>{
+            const sym=p.symbol||'';const isOpt=sym.length>10;
+            if(!isOpt)return;
+            // Heuristic: multi-leg = iron_condor, single put sell = wheel, etc.
+            const side=p.side||'';const isPut=sym.includes('P');const isCall=sym.includes('C');
+            let guess='wheel';
+            if(side==='short'&&isPut)guess='wheel';
+            else if(side==='short'&&isCall)guess='wheel';
+            stratOpenTrades[guess]=(stratOpenTrades[guess]||0)+1;
+        });
+        const grid=document.getElementById('strat-grid');let h='';
         Object.entries(strats).forEach(([k,v])=>{
-            const i=STRAT_MAP[k]||{name:k,icon:'📊',desc:'',badge:'y'};
-            h+=`<div class="strat ${v.enabled?'on':''}" onclick="showStratDetail('${k}')">
+            const i=STRAT_MAP[k]||{name:k,icon:'📊',desc:'',badge:'y',allocation:0};
+            const wins=v.wins||0,losses=v.losses||0,total=v.total_trades||0;
+            const winRate=total>0?((wins/total)*100).toFixed(0):'--';
+            const pnl=v.total_pnl||0;
+            const openCount=stratOpenTrades[k]||0;
+            h+=`<div class="strat ${v.enabled?'on':''}" onclick="showStratDetail('${k}')" style="position:relative">
                 <div class="strat-icon">${i.icon}</div>
                 <div class="strat-body"><div class="strat-name">${i.name}</div><div class="strat-desc">${i.desc}</div>
-                <div class="strat-meta"><span class="badge badge-${i.badge}">${i.badge==='g'?'APPROVED':i.badge==='r'?'REJECTED':'PENDING'}</span>
-                <span style="color:var(--dim);font-size:10px">Trades: ${v.total_trades}</span></div></div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px;font-size:10px">
+                    <div><span style="color:var(--dim)">Alloc:</span> <b>${i.allocation||0}%</b></div>
+                    <div><span style="color:var(--dim)">Open:</span> <b>${openCount}</b></div>
+                    <div><span style="color:var(--dim)">Total:</span> <b>${total}</b></div>
+                    <div><span style="color:var(--dim)">Win%:</span> <b style="color:${winRate!='--'&&winRate>=50?'var(--green)':'var(--text)'}">${winRate}%</b></div>
+                    <div><span style="color:var(--dim)">P&L:</span> <b class="${pnl>=0?'pos':'neg'}">${fmt(pnl)}</b></div>
+                    <div><span style="color:var(--dim)">W/L:</span> <b>${wins}/${losses}</b></div>
+                </div>
+                <div class="strat-meta"><span class="badge badge-${i.badge}">${i.badge==='g'?'APPROVED':i.badge==='r'?'REJECTED':'PENDING'}</span></div></div>
                 <label class="sw" onclick="event.stopPropagation()"><input type="checkbox" ${v.enabled?'checked':''} onchange="toggleStrat('${k}',this.checked)"><span class="sw-s"></span></label>
             </div>`;
         });grid.innerHTML=h;
-    }catch(e){}
+    }catch(e){console.error('loadStrats:',e)}
 }
-function showStratDetail(k){const i=STRAT_MAP[k];if(!i)return;
-    document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:12px;align-items:center">
-    <div class="strat-icon" style="width:48px;height:48px;font-size:24px">${i.icon}</div>
-    <div><div style="font-weight:700;color:var(--accent);font-family:Orbitron">${i.name}</div>
-    <div style="margin-top:4px">${i.detail||''}</div></div></div>`;
+function showStratDetail(k){const i=STRAT_MAP[k];if(!i)return;const v=_stratData[k]||{};
+    const wins=v.wins||0,losses=v.losses||0,total=v.total_trades||0;
+    const winRate=total>0?((wins/total)*100).toFixed(1):'--';
+    const pnl=v.total_pnl||0;
+    document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:16px;align-items:flex-start">
+    <div class="strat-icon" style="width:56px;height:56px;font-size:28px;flex-shrink:0">${i.icon}</div>
+    <div style="flex:1">
+        <div style="font-weight:700;color:var(--accent);font-family:Orbitron;font-size:16px;margin-bottom:8px">${i.name}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;font-size:11px">
+            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
+                <div style="color:var(--dim);font-size:9px">ALLOCATION</div><div style="font-weight:700;color:var(--accent)">${i.allocation||0}%</div></div>
+            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
+                <div style="color:var(--dim);font-size:9px">WIN RATE</div><div style="font-weight:700;color:${winRate!='--'&&parseFloat(winRate)>=50?'var(--green)':'var(--red)'}">${winRate}%</div></div>
+            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
+                <div style="color:var(--dim);font-size:9px">TOTAL P&L</div><div style="font-weight:700" class="${pnl>=0?'pos':'neg'}">${fmt(pnl)}</div></div>
+            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
+                <div style="color:var(--dim);font-size:9px">TRADES</div><div style="font-weight:700">${total} (${wins}W/${losses}L)</div></div>
+        </div>
+        <div style="font-size:12px;line-height:1.7">
+            <div style="margin-bottom:6px"><b style="color:var(--cyan)">⚙️ How It Works:</b> ${i.howItWorks||i.detail||''}</div>
+            <div style="margin-bottom:6px"><b style="color:var(--green)">📥 Entry Criteria:</b> ${i.entry||'--'}</div>
+            <div style="margin-bottom:6px"><b style="color:var(--red)">📤 Exit Criteria:</b> ${i.exit||'--'}</div>
+            <div><b style="color:var(--yellow)">🎯 Ideal Conditions:</b> ${i.idealConditions||'--'}</div>
+        </div>
+    </div></div>`;
+}
+
+// ═══ PERFORMANCE ═══
+async function loadPerformance(){
+    try{
+        const [strats, eqHist, orders] = await Promise.all([
+            api('/api/strategies'),
+            api('/api/equity-history').catch(()=>[]),
+            api('/api/orders').catch(()=>[])
+        ]);
+        // Aggregate from strategies data
+        let totalPnl=0, totalWins=0, totalLosses=0, totalTrades=0;
+        const stratRows=[];
+        Object.entries(strats||{}).forEach(([k,v])=>{
+            const i=STRAT_MAP[k]||{name:k,icon:'📊'};
+            const w=v.wins||0, l=v.losses||0, t=v.total_trades||0;
+            const pnl=v.total_pnl||0;
+            totalPnl+=pnl; totalWins+=w; totalLosses+=l; totalTrades+=t;
+            const wr=t>0?((w/t)*100).toFixed(1):'--';
+            const avg=t>0?(pnl/t).toFixed(2):'--';
+            stratRows.push({name:i.name,icon:i.icon,t,w,l,wr,pnl,avg});
+        });
+        // Summary cards
+        document.getElementById('perf-ret').textContent=fmt(totalPnl);
+        document.getElementById('perf-ret').className='card-v '+(totalPnl>=0?'pos':'neg');
+        document.getElementById('perf-winloss').textContent=`${totalWins}W / ${totalLosses}L`;
+        const winRate=totalTrades>0?((totalWins/totalTrades)*100).toFixed(1)+'%':'--';
+        document.getElementById('perf-wr').textContent=winRate;
+        document.getElementById('perf-wr').className='card-v '+(totalTrades>0&&totalWins/totalTrades>=0.5?'pos':'neg');
+
+        // Avg duration from orders (heuristic: time between first and last fill)
+        const filledOrders=(orders||[]).filter(o=>o.status==='filled'&&o.filled_at);
+        if(filledOrders.length>=2){
+            const dates=filledOrders.map(o=>new Date(o.filled_at).getTime()).sort();
+            const avgMs=(dates[dates.length-1]-dates[0])/Math.max(filledOrders.length-1,1);
+            const avgDays=Math.round(avgMs/86400000);
+            document.getElementById('perf-dur').textContent=avgDays>0?avgDays+'d':'<1d';
+        }else{
+            document.getElementById('perf-dur').textContent='--';
+        }
+
+        // Best/worst trade from orders with P&L
+        let bestTrade=null,worstTrade=null;
+        (orders||[]).forEach(o=>{
+            if(o.status!=='filled')return;
+            const pnl=parseFloat(o.realized_pl||o.pnl||0);
+            if(pnl===0)return;
+            const sym=o.symbol||'';
+            const underlying=sym.length>10?(sym.match(/^[A-Z]+/)?.[0]||sym):sym;
+            if(!bestTrade||pnl>bestTrade.pnl)bestTrade={sym:underlying,pnl};
+            if(!worstTrade||pnl<worstTrade.pnl)worstTrade={sym:underlying,pnl};
+        });
+        document.getElementById('perf-best').textContent=bestTrade?`${bestTrade.sym}: ${fmt(bestTrade.pnl)}`:'No closed trades yet';
+        document.getElementById('perf-worst').textContent=worstTrade?`${worstTrade.sym}: ${fmt(worstTrade.pnl)}`:'No closed trades yet';
+
+        // Strategy breakdown table
+        let sh='';
+        stratRows.forEach(r=>{
+            sh+=`<tr><td style="font-weight:700">${r.icon} ${r.name}</td><td>${r.t}</td><td class="pos">${r.w}</td><td class="neg">${r.l}</td>
+                <td style="color:${r.wr!='--'&&parseFloat(r.wr)>=50?'var(--green)':'var(--text)'}">${r.wr}%</td>
+                <td class="${r.pnl>=0?'pos':'neg'}">${fmt(r.pnl)}</td>
+                <td>${r.avg!='--'?fmt(parseFloat(r.avg)):'--'}</td></tr>`;
+        });
+        document.getElementById('perf-strat-body').innerHTML=sh||'<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px">No strategy data</td></tr>';
+
+        // Mini equity chart in performance tab
+        if(eqHist&&eqHist.length&&typeof LightweightCharts!=='undefined'){
+            const c=document.getElementById('perf-eq-chart');
+            if(c&&c.clientWidth>0){
+                c.innerHTML='';
+                const chart=LightweightCharts.createChart(c,{width:c.clientWidth,height:250,
+                    layout:{background:{color:'#0a0e17'},textColor:'#8899aa'},
+                    grid:{vertLines:{color:'#1a1a2e'},horzLines:{color:'#1a1a2e'}},
+                    rightPriceScale:{borderColor:'#2a2a3a'},timeScale:{borderColor:'#2a2a3a'}});
+                const series=chart.addAreaSeries({topColor:'rgba(0,200,83,.2)',bottomColor:'rgba(0,200,83,.01)',lineColor:'#00c853',lineWidth:2});
+                series.setData(eqHist.map(h=>({time:h.time,value:h.equity})));
+                new ResizeObserver(()=>chart.applyOptions({width:c.clientWidth})).observe(c);
+            }
+        }
+    }catch(e){console.error('loadPerformance:',e)}
 }
 
 // ═══ SCANNER ═══
@@ -834,7 +1009,9 @@ function chartLink(symbol){
     const underlying=symbol.length>10?(symbol.match(/^[A-Z]+/)?.[0]||symbol):symbol;
     const url=chartIndex[underlying];
     if(!url)return '';
-    return ` <a href="${url}" target="_blank" title="Trade analysis: ${underlying}" style="text-decoration:none;font-size:11px">📸</a>`;
+    // Ensure correct base path for GitHub Pages
+    const fullUrl=url.startsWith('http')?url:url.startsWith('/sambot-trading/')?url:'/sambot-trading/charts/'+url.replace(/^\/?(charts\/)?/,'');
+    return ` <a href="${fullUrl}" target="_blank" title="Trade analysis: ${underlying}" style="text-decoration:none;font-size:11px">📸</a>`;
 }
 
 async function loadOrders(){
@@ -1102,10 +1279,71 @@ function updateEquityChart(equity){
     }
 }
 
+// ═══ JOURNAL ═══
+async function loadJournal(){
+    try{
+        const orders=await api('/api/orders');
+        const body=document.getElementById('j-body');
+        if(!orders||!orders.length||orders.error){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No trades yet</td></tr>';return}
+        // Filter to filled orders and build journal entries
+        const filled=orders.filter(o=>o.status==='filled'||o.status==='partially_filled');
+        if(!filled.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled trades yet</td></tr>';return}
+        let h='';
+        for(const o of filled.slice(0,100)){
+            const date=new Date(o.filled_at||o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
+            const sym=o.symbol||'';
+            const legs=o.legs||[];
+            const isMleg=o.order_class==='mleg'&&legs.length>0;
+            const underlying=sym.length>10?(sym.match(/^[A-Z]+/)?.[0]||sym):(isMleg&&legs.length?(legs[0].symbol||'').match(/^[A-Z]+/)?.[0]||'?':sym);
+            
+            // Detect strategy
+            let strat='STOCK';
+            if(isMleg){
+                const puts=legs.filter(l=>(l.symbol||'').includes('P'));
+                const calls=legs.filter(l=>(l.symbol||'').includes('C'));
+                if(puts.length===2&&calls.length===2)strat='🦅 Iron Condor';
+                else if(puts.length===2)strat='Put Spread';
+                else if(calls.length===2)strat='Call Spread';
+                else strat='Multi-Leg';
+            }else if(sym.length>10){
+                const isP=sym.includes('P'),isC=sym.includes('C');
+                if(o.side==='sell'&&isP)strat='🎡 Wheel (CSP)';
+                else if(o.side==='sell'&&isC)strat='🎡 Wheel (CC)';
+                else if(o.side==='buy'&&isP)strat='Long Put';
+                else if(o.side==='buy'&&isC)strat='Long Call';
+                else strat='Option';
+            }
+            
+            const entryPrice=o.filled_avg_price?fmt(parseFloat(o.filled_avg_price)):'—';
+            const pnl=parseFloat(o.realized_pl||o.pnl||0);
+            const pnlStr=pnl!==0?fmt(pnl):'—';
+            const pnlCls=pnl>0?'pos':pnl<0?'neg':'';
+            const sc=o.status==='filled'?'pos':'neu';
+            
+            // Reason heuristic
+            let reason=o.side==='sell'?'Premium collection':'Directional';
+            if(strat.includes('Condor'))reason='Range-bound premium';
+            if(strat.includes('Wheel'))reason=o.side==='sell'?(sym.includes('P')?'Bullish premium / want shares':'Covered call income'):'Assignment';
+            if(strat.includes('Spread'))reason='Directional credit';
+            
+            h+=`<tr>
+                <td>${date}</td>
+                <td style="color:#ff8c00;font-size:11px">${strat}</td>
+                <td style="cursor:pointer;color:var(--cyan);text-decoration:underline" onclick="loadStockChart('${underlying}')">${underlying} ${chartLink(underlying)}</td>
+                <td>${entryPrice}</td>
+                <td class="${sc}">${o.status}</td>
+                <td class="${pnlCls}">${pnlStr}</td>
+                <td style="color:var(--dim);font-size:11px">${reason}</td>
+            </tr>`;
+        }
+        body.innerHTML=h;
+    }catch(e){console.error('loadJournal:',e);document.getElementById('j-body').innerHTML='<tr><td colspan="7" style="text-align:center;color:#ff3b5c;padding:28px">Error loading journal</td></tr>'}
+}
+
 // ═══ INIT ═══
 addLog('SamBot Trading Terminal initialized','system');
 refreshAll().then(()=>{addLog('Connected to Alpaca ✅','trade');addLog('6 strategies loaded','info')});
-loadChartIndex().then(()=>{loadOrders()});loadStrats();loadBT();setTimeout(initChart,500);
+loadChartIndex().then(()=>{loadOrders();loadJournal()});loadStrats();loadPerformance();loadBT();setTimeout(initChart,500);
 // Load scan log immediately then every 15s
 setTimeout(()=>{lastScanLogLen=0;loadScanLog()},2000);
 setTimeout(detectRegime,4000);
