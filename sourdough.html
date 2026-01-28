@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🍞 Sourdough Sidekick</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            background: linear-gradient(135deg, #fef3e2 0%, #fce4c4 100%);
+            font-family: 'Nunito', sans-serif;
+            min-height: 100vh;
+            color: #5d4037;
+            padding-bottom: 80px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #d4845f 0%, #c9703f 100%);
+            padding: 25px 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
+        }
+
+        .header h1 {
+            font-family: 'Fredoka One', cursive;
+            color: #fff;
+            font-size: 1.8rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header .subtitle {
+            color: rgba(255,255,255,0.9);
+            font-size: 0.95rem;
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 15px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(139, 69, 19, 0.15);
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #f5deb3 0%, #deb887 100%);
+            padding: 15px 20px;
+            font-family: 'Fredoka One', cursive;
+            font-size: 1.2rem;
+            color: #5d4037;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-content {
+            padding: 20px;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 18px 20px;
+            border: none;
+            border-radius: 15px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #d4845f 0%, #c9703f 100%);
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(201, 112, 63, 0.4);
+        }
+
+        .btn-primary:hover, .btn-primary:active {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(201, 112, 63, 0.5);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #8fbc8f 0%, #6b8e6b 100%);
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(107, 142, 107, 0.4);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #d4845f;
+            color: #d4845f;
+        }
+
+        .btn-small {
+            padding: 12px 15px;
+            font-size: 0.95rem;
+        }
+
+        .btn-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #5d4037;
+        }
+
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #deb887;
+            border-radius: 12px;
+            font-family: 'Nunito', sans-serif;
+            font-size: 1rem;
+            background: #fffef5;
+            transition: border-color 0.2s;
+        }
+
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #d4845f;
+        }
+
+        /* Starter Display */
+        .starter-hero {
+            text-align: center;
+            padding: 30px 20px;
+        }
+
+        .starter-avatar {
+            font-size: 5rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .starter-name {
+            font-family: 'Fredoka One', cursive;
+            font-size: 2rem;
+            color: #c9703f;
+            margin: 15px 0 5px 0;
+        }
+
+        .starter-status {
+            font-size: 1.1rem;
+            color: #888;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            background: #eee;
+            height: 12px;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, #d4845f, #f4a460);
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+
+        /* Day Card */
+        .day-card {
+            background: #fffbf5;
+            border: 2px solid #f5deb3;
+            border-radius: 15px;
+            padding: 15px;
+            margin-bottom: 12px;
+        }
+
+        .day-card.active {
+            border-color: #d4845f;
+            background: #fff5eb;
+        }
+
+        .day-card.done {
+            opacity: 0.6;
+            border-color: #8fbc8f;
+        }
+
+        .day-card h3 {
+            font-family: 'Fredoka One', cursive;
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .day-card p {
+            color: #777;
+            font-size: 0.95rem;
+        }
+
+        /* Task List */
+        .task-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0e6d8;
+        }
+
+        .task-item:last-child {
+            border-bottom: none;
+        }
+
+        .task-check {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #d4845f;
+            border-radius: 6px;
+            flex-shrink: 0;
+            margin-top: 2px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff;
+        }
+
+        .task-check.checked {
+            background: #d4845f;
+            color: #fff;
+        }
+
+        .task-text {
+            flex: 1;
+            line-height: 1.5;
+        }
+
+        /* Tip Box */
+        .tip-box {
+            background: linear-gradient(135deg, #fff8dc 0%, #fef3cd 100%);
+            border-left: 4px solid #daa520;
+            padding: 15px;
+            border-radius: 0 12px 12px 0;
+            margin: 15px 0;
+        }
+
+        .tip-box strong {
+            color: #b8860b;
+        }
+
+        /* Button Row */
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-row .btn {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        /* Feeding Log */
+        .log-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: #fffbf5;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        .log-icon {
+            font-size: 1.5rem;
+        }
+
+        .log-details {
+            flex: 1;
+        }
+
+        .log-time {
+            font-weight: 600;
+            color: #5d4037;
+        }
+
+        .log-note {
+            color: #888;
+            font-size: 0.9rem;
+        }
+
+        .hidden { display: none !important; }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #a08060;
+            font-size: 0.85rem;
+        }
+
+        /* Mobile Optimizations */
+        @media (max-width: 480px) {
+            .header h1 { font-size: 1.5rem; }
+            .starter-avatar { font-size: 4rem; }
+            .starter-name { font-size: 1.6rem; }
+            .btn { padding: 15px 18px; font-size: 1rem; }
+            .card-content { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>🍞 Sourdough Sidekick</h1>
+        <p class="subtitle" id="subtitle">Your Starter Companion</p>
+    </header>
+
+    <div class="container">
+        <!-- Welcome Screen -->
+        <div id="screen-welcome">
+            <div class="card">
+                <div class="card-header">🌱 Welcome!</div>
+                <div class="card-content">
+                    <p style="margin-bottom: 20px; text-align: center; font-size: 1.1rem;">
+                        Ready to begin your sourdough journey?
+                    </p>
+                    
+                    <button class="btn btn-primary btn-icon" onclick="showScreen('create')">
+                        🌾 Start from Scratch
+                        <small style="display: block; font-weight: normal; font-size: 0.8rem; opacity: 0.9;">7-day guided process</small>
+                    </button>
+                    
+                    <button class="btn btn-outline btn-icon" onclick="showScreen('existing')">
+                        🫙 I Have a Starter
+                        <small style="display: block; font-weight: normal; font-size: 0.8rem;">Set up reminders</small>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Starter Screen -->
+        <div id="screen-create" class="hidden">
+            <div class="card">
+                <div class="card-header">🌾 Name Your Starter</div>
+                <div class="card-content">
+                    <div class="input-group">
+                        <label>What will you call it?</label>
+                        <input type="text" id="input-name" placeholder="e.g., Bubbles, Doughy, Sir Rise-a-Lot...">
+                    </div>
+                    
+                    <div class="tip-box">
+                        <strong>💡 You'll need:</strong><br>
+                        Flour, water, a jar, and 7 days of patience!
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="startJourney()">
+                        🚀 Let's Begin!
+                    </button>
+                    
+                    <button class="btn btn-outline btn-small" onclick="showScreen('welcome')" style="margin-top: 5px;">
+                        ← Back
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Journey Dashboard -->
+        <div id="screen-journey" class="hidden">
+            <div class="card">
+                <div class="card-content starter-hero">
+                    <div class="starter-avatar" id="journey-avatar">🫙</div>
+                    <div class="starter-name" id="journey-name">Your Starter</div>
+                    <div class="starter-status" id="journey-status">Day 1 of 7</div>
+                    
+                    <div class="progress-container">
+                        <div class="progress-label">
+                            <span>Progress</span>
+                            <span id="progress-text">14%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill" style="width: 14%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">📋 Today's Tasks</div>
+                <div class="card-content" id="today-tasks">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">⚡ Actions</div>
+                <div class="card-content">
+                    <div class="btn-row">
+                        <button class="btn btn-primary btn-small" onclick="completeDay()">
+                            ✅ Done for Today
+                        </button>
+                        <button class="btn btn-secondary btn-small" onclick="downloadCalendar()">
+                            📅 iPhone Reminders
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">📅 7-Day Journey</div>
+                <div class="card-content" id="all-days">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Existing Starter Setup -->
+        <div id="screen-existing" class="hidden">
+            <div class="card">
+                <div class="card-header">🫙 Your Starter</div>
+                <div class="card-content">
+                    <div class="input-group">
+                        <label>Starter's Name</label>
+                        <input type="text" id="existing-name" placeholder="What do you call it?">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>Where does it live?</label>
+                        <select id="existing-storage">
+                            <option value="counter">Counter (daily feeding)</option>
+                            <option value="fridge">Fridge (weekly feeding)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>Reminder Time</label>
+                        <input type="time" id="existing-time" value="08:00">
+                    </div>
+                    
+                    <button class="btn btn-primary" onclick="saveExisting()">
+                        ✨ Save & Get Reminders
+                    </button>
+                    
+                    <button class="btn btn-outline btn-small" onclick="showScreen('welcome')" style="margin-top: 5px;">
+                        ← Back
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard -->
+        <div id="screen-dashboard" class="hidden">
+            <div class="card">
+                <div class="card-content starter-hero">
+                    <div class="starter-avatar">🫧</div>
+                    <div class="starter-name" id="dash-name">Your Starter</div>
+                    <div class="starter-status" id="dash-status">Happy & bubbly!</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">⚡ Quick Actions</div>
+                <div class="card-content">
+                    <div class="btn-row">
+                        <button class="btn btn-primary btn-small" onclick="logFeeding()">
+                            🥄 Log Feeding
+                        </button>
+                        <button class="btn btn-secondary btn-small" onclick="downloadCalendar()">
+                            📅 Reminders
+                        </button>
+                    </div>
+                    <button class="btn btn-outline btn-small" onclick="resetAll()" style="margin-top: 10px;">
+                        🔄 Start Over
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">📖 Feeding Log</div>
+                <div class="card-content" id="feeding-log">
+                    <p style="color: #999; text-align: center;">No feedings logged yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        Made with ❤️ for sourdough lovers
+    </footer>
+
+    <script>
+        firebase.initializeApp({ databaseURL: "https://sambot-tasks-default-rtdb.firebaseio.com" });
+        const db = firebase.database();
+        
+        // User ID from URL or localStorage
+        let userId = new URLSearchParams(window.location.search).get('id');
+        if (!userId) {
+            userId = localStorage.getItem('sourdough_id') || 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('sourdough_id', userId);
+        }
+        if (!window.location.search.includes('id=')) {
+            window.history.replaceState({}, '', `?id=${userId}`);
+        }
+        
+        const userRef = db.ref(`sourdough/${userId}`);
+        let data = null;
+
+        const days = [
+            { title: "The Beginning", emoji: "🌱", task: "Mix 60g flour + 60g water", tasks: ["Mix 60g whole wheat flour + 60g water", "Stir until smooth", "Cover loosely in warm spot", "Mark the level"], tip: "Use room temp water. Whole wheat has more wild yeast!", expect: "Just a paste - that's normal!" },
+            { title: "Watching", emoji: "👀", task: "Check for bubbles", tasks: ["Look for tiny bubbles", "Give it a stir", "No feeding today - just observe"], tip: "Some show activity, some don't. Both normal!", expect: "Maybe small bubbles, maybe not" },
+            { title: "First Feeding", emoji: "🍽️", task: "Discard half, feed", tasks: ["Discard half the starter", "Add 60g flour + 60g water", "Stir well, cover loosely"], tip: "Discarding keeps acid levels right!", expect: "More bubbles, tangier smell" },
+            { title: "Building Strength", emoji: "💪", task: "Discard half, feed", tasks: ["Discard half", "Feed 60g flour + 60g water", "Watch for rise in 4-6 hours"], tip: "If very active, feed twice today!", expect: "Should be bubblier, might double" },
+            { title: "Getting Bubbly", emoji: "🫧", task: "Discard half, feed", tasks: ["Discard half", "Feed 60g flour + 60g water", "Look for consistent doubling"], tip: "Healthy starter doubles in 4-8 hours", expect: "Lots of bubbles, rising predictably" },
+            { title: "Almost There", emoji: "🎈", task: "Feed + float test", tasks: ["Discard half, feed as usual", "Try float test: spoonful in water", "If it floats, you're close!"], tip: "Float = ready to bake!", expect: "Doubling reliably, pleasant sour smell" },
+            { title: "Birth Day!", emoji: "🎉", task: "Final feeding + celebrate!", tasks: ["Do a final feeding", "Perform float test", "If floating - congratulations!", "If not, keep going - you're close!"], tip: "Some take 10-14 days. Don't give up!", expect: "Active, bubbly, ready for bread!" }
+        ];
+
+        // Listen for data changes
+        userRef.on('value', snap => {
+            data = snap.val();
+            render();
+        });
+
+        function render() {
+            // Hide all screens
+            document.querySelectorAll('[id^="screen-"]').forEach(s => s.classList.add('hidden'));
+            
+            if (!data) {
+                document.getElementById('screen-welcome').classList.remove('hidden');
+                return;
+            }
+            
+            if (data.journeyStarted && !data.journeyComplete) {
+                renderJourney();
+                document.getElementById('screen-journey').classList.remove('hidden');
+            } else if (data.name) {
+                renderDashboard();
+                document.getElementById('screen-dashboard').classList.remove('hidden');
+            } else {
+                document.getElementById('screen-welcome').classList.remove('hidden');
+            }
+        }
+
+        function showScreen(name) {
+            document.querySelectorAll('[id^="screen-"]').forEach(s => s.classList.add('hidden'));
+            document.getElementById('screen-' + name).classList.remove('hidden');
+        }
+
+        function startJourney() {
+            const name = document.getElementById('input-name').value.trim() || 'Bubbles';
+            userRef.set({
+                name: name,
+                journeyStarted: new Date().toISOString(),
+                journeyDay: 1,
+                journeyComplete: false,
+                completedDays: []
+            });
+        }
+
+        function renderJourney() {
+            const day = data.journeyDay || 1;
+            const name = data.name;
+            const completed = data.completedDays || [];
+            const dayData = days[day - 1];
+            
+            document.getElementById('subtitle').textContent = `${name}'s Journey`;
+            document.getElementById('journey-name').textContent = name;
+            document.getElementById('journey-avatar').textContent = dayData.emoji;
+            document.getElementById('journey-status').textContent = `Day ${day} of 7`;
+            document.getElementById('progress-fill').style.width = `${(day / 7) * 100}%`;
+            document.getElementById('progress-text').textContent = `${Math.round((day / 7) * 100)}%`;
+            
+            // Today's tasks
+            document.getElementById('today-tasks').innerHTML = `
+                <h3 style="font-family: 'Fredoka One', cursive; margin-bottom: 15px;">${dayData.emoji} Day ${day}: ${dayData.title}</h3>
+                ${dayData.tasks.map(t => `
+                    <div class="task-item">
+                        <div class="task-check" onclick="this.classList.toggle('checked')">
+                            <span style="display: none;">✓</span>
+                        </div>
+                        <div class="task-text">${t}</div>
+                    </div>
+                `).join('')}
+                <div class="tip-box"><strong>💡 Tip:</strong> ${dayData.tip}</div>
+                <p style="margin-top: 10px; color: #888;"><strong>What to expect:</strong> ${dayData.expect}</p>
+            `;
+            
+            // All days
+            document.getElementById('all-days').innerHTML = days.map((d, i) => {
+                const isDone = completed.includes(i + 1);
+                const isActive = (i + 1) === day;
+                return `
+                    <div class="day-card ${isDone ? 'done' : ''} ${isActive ? 'active' : ''}">
+                        <h3>${d.emoji} Day ${i + 1}: ${d.title} ${isDone ? '✅' : ''}</h3>
+                        <p>${d.task}</p>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function completeDay() {
+            const day = data.journeyDay || 1;
+            const completed = data.completedDays || [];
+            
+            if (!completed.includes(day)) completed.push(day);
+            
+            if (day >= 7) {
+                userRef.update({
+                    completedDays: completed,
+                    journeyComplete: true,
+                    birthday: data.journeyStarted.split('T')[0],
+                    storage: 'counter'
+                });
+                alert(`🎉 Congratulations! ${data.name} is born!\n\nYour starter is ready to bake with!`);
+            } else {
+                userRef.update({
+                    completedDays: completed,
+                    journeyDay: day + 1
+                });
+                alert(`Day ${day} complete! ✨\n\nSee you tomorrow for Day ${day + 1}!`);
+            }
+        }
+
+        function saveExisting() {
+            const name = document.getElementById('existing-name').value.trim() || 'Starter';
+            userRef.set({
+                name: name,
+                storage: document.getElementById('existing-storage').value,
+                feedTime: document.getElementById('existing-time').value,
+                birthday: new Date().toISOString().split('T')[0],
+                feedings: {}
+            });
+        }
+
+        function renderDashboard() {
+            document.getElementById('subtitle').textContent = `${data.name}'s Home`;
+            document.getElementById('dash-name').textContent = data.name;
+            
+            // Calculate status based on last feeding
+            const feedings = Object.values(data.feedings || {});
+            const lastFed = feedings.length ? Math.max(...feedings.map(f => new Date(f.time).getTime())) : 0;
+            const hours = lastFed ? (Date.now() - lastFed) / 3600000 : 999;
+            
+            let status = "Ready for some love! 💕";
+            if (hours < 12) status = "Just fed & happy! 😊";
+            else if (hours < 24) status = "Doing great! ✨";
+            else if (hours < 48) status = "Getting hungry... 🥺";
+            else if (hours < 999) status = "Please feed me! 😫";
+            
+            document.getElementById('dash-status').textContent = status;
+            
+            // Feeding log
+            const sorted = feedings.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 10);
+            if (sorted.length === 0) {
+                document.getElementById('feeding-log').innerHTML = '<p style="color: #999; text-align: center;">No feedings logged yet</p>';
+            } else {
+                document.getElementById('feeding-log').innerHTML = sorted.map(f => {
+                    const d = new Date(f.time);
+                    return `
+                        <div class="log-item">
+                            <div class="log-icon">🥄</div>
+                            <div class="log-details">
+                                <div class="log-time">${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                                ${f.note ? `<div class="log-note">${f.note}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function logFeeding() {
+            const note = prompt('Any notes? (optional)');
+            userRef.child('feedings').push({
+                time: new Date().toISOString(),
+                note: note || ''
+            });
+            alert(`${data.name} has been fed! 🥄`);
+        }
+
+        function downloadCalendar() {
+            const name = data.name || 'Starter';
+            let ics = `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Sourdough Sidekick//EN\n`;
+            
+            if (data.journeyStarted && !data.journeyComplete) {
+                // 7-day creation calendar — start from TODAY (current day in journey)
+                const currentDay = data.journeyDay || 1;
+                const today = new Date();
+                today.setHours(8, 0, 0, 0);
+                days.forEach((d, i) => {
+                    if (i + 1 < currentDay) return; // skip already completed days
+                    const date = new Date(today);
+                    date.setDate(date.getDate() + (i - currentDay + 1)); // offset from today
+                    const ds = date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                    ics += `BEGIN:VEVENT\nDTSTART:${ds}\nSUMMARY:${d.emoji} ${name}: Day ${i+1}\nDESCRIPTION:${d.tasks.join('\\n')}\nBEGIN:VALARM\nTRIGGER:-PT10M\nACTION:DISPLAY\nDESCRIPTION:Time for ${name}!\nEND:VALARM\nEND:VEVENT\n`;
+                });
+            } else {
+                // Regular feeding reminder
+                const isDaily = data.storage === 'counter';
+                const time = data.feedTime || '08:00';
+                const [h, m] = time.split(':');
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(parseInt(h), parseInt(m), 0, 0);
+                const ds = `${tomorrow.getFullYear()}${String(tomorrow.getMonth()+1).padStart(2,'0')}${String(tomorrow.getDate()).padStart(2,'0')}T${h}${m}00`;
+                ics += `BEGIN:VEVENT\nDTSTART;TZID=America/Chicago:${ds}\nRRULE:FREQ=${isDaily ? 'DAILY' : 'WEEKLY'}\nSUMMARY:🍞 Feed ${name}!\nDESCRIPTION:Discard half, add flour + water, stir!\nBEGIN:VALARM\nTRIGGER:-PT10M\nACTION:DISPLAY\nDESCRIPTION:Feed ${name}!\nEND:VALARM\nEND:VEVENT\n`;
+            }
+            
+            ics += 'END:VCALENDAR';
+            
+            const blob = new Blob([ics], { type: 'text/calendar' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${name.toLowerCase().replace(/\s+/g, '-')}-reminders.ics`;
+            link.click();
+            
+            alert('📅 Calendar downloaded!\n\nOpen it on your iPhone to add reminders.\n\nTo stop: Calendar app → find event → Delete → Delete All Future Events');
+        }
+
+        function resetAll() {
+            if (confirm('Delete all data and start over?')) {
+                userRef.remove();
+                localStorage.removeItem('sourdough_id');
+                location.href = location.pathname;
+            }
+        }
+    </script>
+</body>
+</html>
