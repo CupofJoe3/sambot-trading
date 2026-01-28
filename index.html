@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SamBot Trading Terminal</title>
     <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
         *{margin:0;padding:0;box-sizing:border-box}
@@ -428,16 +430,57 @@ function showTab(el,id){
     document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='p-'+id));
 }
 
-// ═══ API ═══
-async function api(p){const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);try{
-const url=(API?API+p:p)+'.json';
-const r=await fetch(url,{signal:c.signal});clearTimeout(t);
-if(!r.ok){return {error:r.status+' '+r.statusText};}
-const ct=r.headers.get('content-type')||'';
-if(!ct.includes('json')&&!url.endsWith('.json')){return {error:'Not JSON'};}
-return r.json();
-}catch(e){clearTimeout(t);throw e}}
+// ═══ FIREBASE ═══
+const fbApp=firebase.initializeApp({databaseURL:'https://sambot-tasks-default-rtdb.firebaseio.com'});
+const db=firebase.database();
+const FB_CACHE={};
+
+// Map API paths to Firebase paths
+const FB_MAP={
+    '/api/status':'trading/status',
+    '/api/positions':'trading/positions',
+    '/api/orders':'trading/orders',
+    '/api/regime':'trading/regime',
+    '/api/strategies':'trading/strategies',
+    '/api/backtest-results':'trading/backtest_results',
+    '/api/equity-history':'trading/equity_history',
+    '/api/iv-scan':'trading/iv_scan',
+    '/api/charts':'trading/charts',
+    '/api/scan-log':'trading/scan_log',
+};
+
+async function api(p){
+    const fbPath=FB_MAP[p];
+    if(fbPath){
+        try{
+            const snap=await db.ref(fbPath).once('value');
+            const val=snap.val();
+            if(val)return val;
+        }catch(e){console.warn('Firebase read failed for',p,e)}
+    }
+    // Fallback to static JSON
+    const c=new AbortController();const t=setTimeout(()=>c.abort(),8000);
+    try{
+        const url=(API?API+p:p)+'.json';
+        const r=await fetch(url,{signal:c.signal});clearTimeout(t);
+        if(!r.ok)return {error:r.status};
+        return r.json();
+    }catch(e){clearTimeout(t);return {error:'offline'}}
+}
 async function apiPost(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
+
+// ═══ FIREBASE REALTIME LISTENERS ═══
+function setupRealtimeListeners(){
+    // Auto-refresh when data changes
+    db.ref('trading/status').on('value',snap=>{
+        const d=snap.val();if(d){FB_CACHE['/api/status']=d;refreshDash()}
+    });
+    db.ref('trading/positions').on('value',snap=>{
+        const d=snap.val();if(d){FB_CACHE['/api/positions']=d;refreshDash()}
+    });
+    addLog('🔥 Firebase realtime connected','system');
+}
+setTimeout(setupRealtimeListeners,2000);
 
 // ═══ MASTER ═══
 async function toggleMaster(on){
