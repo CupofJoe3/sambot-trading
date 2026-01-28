@@ -777,20 +777,74 @@ function renderPos(pos,id,pct=false){
 // ═══ STRATEGIES ═══
 const STRAT_MAP={
     // TIER 1: Profitable in walk-forward backtest
-    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle. +$98K backtest, 90.6% WR',badge:'g',detail:'Cash-secured puts, covered calls when assigned. Our #1 earner. Walk-forward: +$98,240 over 1,220 trades.'},
-    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium. +$35K backtest, 64.3% WR ✅',badge:'g',detail:'Same-day expiry credit spreads. ONLY strategy that passed statistical significance AND beat random baseline.'},
-    dividend:{name:'Dividend Capture',icon:'💰',desc:'CSP before ex-div. +$38K backtest, 66.1% WR',badge:'g',detail:'Sell puts before ex-dividend dates. Collect premium + dividend if assigned.'},
-    jade_lizard:{name:'Jade Lizard',icon:'🦎',desc:'Short put + bear call spread. +$19K backtest, 71.7% WR',badge:'g',detail:'Zero upside risk structure. Short put + bear call spread for premium.'},
-    bwb:{name:'BWB',icon:'🦋',desc:'Broken wing butterfly. +$8.2K backtest, 80% WR',badge:'y',detail:'Asymmetric butterfly. Walk-forward marginal but profitable. 1,334 trades tested.'},
+    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle. +$98K backtest, 90.6% WR',badge:'g',
+        detail:`<b>How it works:</b> Sell cash-secured puts (CSPs) on large-cap stocks at 25-delta, 30 DTE. If the put expires worthless, keep the premium. If assigned, sell covered calls against the shares until called away. Repeat the cycle.<br><br>
+<b>Entry criteria:</b> IV Rank > 30, RSI not overbought, stock in uptrend or neutral. Minimum 33% credit ratio.<br><br>
+<b>Exit rules:</b> Close at 50% profit, 2x credit stop loss, or 7 DTE — whichever comes first. Big winners (75%+) closed immediately.<br><br>
+<b>Backtest results:</b> 1,220 trades over 5 years, 90.6% win rate, +$98,240 net P&L. Our highest-earning strategy. Walk-forward validated but marginal statistical significance — the high win rate is real but individual losses can be large.<br><br>
+<b>Best market:</b> Bull or neutral markets. Struggles in sharp selloffs (you get assigned at bad prices).`},
+    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium. +$35K backtest, 64.3% WR ✅',badge:'g',
+        detail:`<b>How it works:</b> Sell same-day expiry (0DTE) credit spreads on SPY/QQQ. Enter after 9:35 AM, must close by 3:30 PM. Uses 5-10 delta iron condors or credit spreads.<br><br>
+<b>Entry criteria:</b> SPY/QQQ only. 5-10 delta short strikes. 50% profit target, 2x stop loss. Hard close by 3:30 PM ET regardless.<br><br>
+<b>Why it passed:</b> The ONLY strategy that achieved statistical significance (p < 0.05 after Bonferroni correction) AND beat the random baseline. 2,244 trades tested — large sample size gives confidence.<br><br>
+<b>Backtest results:</b> 2,244 trades, 64.3% WR, +$35,043 net P&L, Sharpe 4.60. Deflated Sharpe ratio confirms this isn't data mining luck.<br><br>
+<b>Risk:</b> Gamma risk is extreme near expiry. One bad move can wipe days of profits. Position sizing is critical — never more than 2% of portfolio per trade.`},
+    dividend:{name:'Dividend Capture',icon:'💰',desc:'CSP before ex-div. +$38K backtest, 66.1% WR',badge:'g',
+        detail:`<b>How it works:</b> Sell puts on stocks 1-2 weeks before their ex-dividend date. If assigned, you own shares and collect the dividend. If not assigned, you keep the premium.<br><br>
+<b>Entry criteria:</b> 40-delta puts, 14 DTE, IV Rank > 20. Only on stocks with upcoming ex-dividend dates. Close at 50% profit or 3 DTE.<br><br>
+<b>Backtest results:</b> 319 trades, 66.1% WR, +$38,692 net P&L. Profitable but did not reach statistical significance — may benefit from favorable market conditions in test period.<br><br>
+<b>Best market:</b> Works in any market that isn't crashing. Dividend stocks tend to be more stable (blue chips, utilities).`},
+    jade_lizard:{name:'Jade Lizard',icon:'🦎',desc:'Short put + bear call spread. +$19K backtest, 71.7% WR',badge:'g',
+        detail:`<b>How it works:</b> Sell a naked put and a bear call spread simultaneously. The key: total credit received must exceed the width of the call spread, so there is ZERO risk to the upside.<br><br>
+<b>Entry criteria:</b> 20-25 delta put, 25-30 delta call spread, 35-45 DTE, IV Rank > 30. Credit must exceed call spread width. 33% minimum credit ratio.<br><br>
+<b>Backtest results:</b> 639 trades, 71.7% WR, +$19,794 net P&L. Profitable but not statistically significant.<br><br>
+<b>Best market:</b> Neutral to slightly bullish. The zero upside risk makes this safer than iron condors when stocks rally.`},
+    bwb:{name:'BWB',icon:'🦋',desc:'Broken wing butterfly. +$8.2K backtest, 80% WR',badge:'y',
+        detail:`<b>How it works:</b> An asymmetric butterfly spread where one wing is wider than the other. Entered for a net credit with a directional bias. If the stock stays in range, you profit from time decay.<br><br>
+<b>Entry criteria:</b> 25-delta center strike, 35 DTE, IV Rank > 25. Close at 50% profit, 2x stop, or 7 DTE.<br><br>
+<b>Backtest results:</b> 1,334 trades, 80.0% WR, +$8,237 net P&L. Marginal significance — promising but needs more data to confirm edge.<br><br>
+<b>Best market:</b> Range-bound or mildly trending. The asymmetry gives you a slight directional bias while still profiting from theta.`},
     // TIER 2: Lost money in backtest — DISABLED
-    iron_condor:{name:'Iron Condor ⚠️',icon:'🦅',desc:'DISABLED: -$7.9K backtest. Costs eat profit.',badge:'r',detail:'76.7% WR looks good but losses outweigh wins after transaction costs. $11K in costs alone.'},
-    vertical:{name:'Vertical Spread ⚠️',icon:'📐',desc:'DISABLED: -$10.2K backtest. Bad R:R ratio.',badge:'r',detail:'76.7% WR but average loss >> average win. Risk/reward not favorable after costs.'},
-    earnings:{name:'Earnings Crush ⚠️',icon:'📊',desc:'DISABLED: -$3.8K backtest. AMZN/MSFT blow up.',badge:'r',detail:'73.8% WR but a few big losers (AMZN, MSFT) wipe out all gains.'},
-    gamma_scalp:{name:'Gamma Scalp ❌',icon:'⚡',desc:'DISABLED: -$413K backtest. Catastrophic.',badge:'r',detail:'5.8% WR. Theta decay destroys positions before gamma kicks in. Do not use.'},
-    earnings_buy:{name:'Earnings Straddle Buy ❌',icon:'🎯',desc:'DISABLED: -$32K backtest. 36.8% WR.',badge:'r',detail:'Buying straddles before earnings. Implied move already priced in — loses after costs.'},
-    pairs:{name:'Pairs Trading ❌',icon:'🔄',desc:'DISABLED: -$11K backtest. No edge over random.',badge:'r',detail:'50% WR = coin flip. Mean reversion not reliable enough after transaction costs.'},
-    momentum:{name:'Momentum ❌',icon:'🚀',desc:'DISABLED: -$1.9K backtest. Costs eat the edge.',badge:'r',detail:'RSI/MACD signals have slight edge but transaction costs eliminate profit.'},
-    calendar:{name:'Calendar Spread ❌',icon:'📅',desc:'DISABLED: -$1.9K backtest. Loses on volatile stocks.',badge:'r',detail:'Term structure play. Doesn\'t work well on individual volatile stocks.'},
+    iron_condor:{name:'Iron Condor ⚠️',icon:'🦅',desc:'DISABLED: -$7.9K backtest. Costs eat profit.',badge:'r',
+        detail:`<b>How it works:</b> Sell an OTM put spread + OTM call spread simultaneously (iron condor). Profit if stock stays between the short strikes.<br><br>
+<b>Why it failed:</b> 76.7% win rate looks great, but the average loss is much larger than the average win. With $11K in transaction costs across 493 trades, the small credits get eaten alive. The 16-delta short strikes don't collect enough premium to overcome the occasional big loss when stocks blow through a wing.<br><br>
+<b>Backtest results:</b> 493 trades, 76.7% WR, -$7,930 net P&L (includes $11K costs). Every single stock except IWM, AMD, NFLX, V, UNH, and JPM lost money.<br><br>
+<b>Could be fixed by:</b> Wider wings, higher IV threshold, or restricting to ETFs only (IWM was profitable).`},
+    vertical:{name:'Vertical Spread ⚠️',icon:'📐',desc:'DISABLED: -$10.2K backtest. Bad R:R ratio.',badge:'r',
+        detail:`<b>How it works:</b> Sell a put spread (bull put) or call spread (bear call) based on RSI/momentum signals. The directional bet uses vertical spreads for defined risk.<br><br>
+<b>Why it failed:</b> 76.7% WR but terrible risk/reward — risking $900+ to make $100. When the 23.3% of trades lose, each loss wipes out 6-8 winners. TSLA alone lost $2,829. Transaction costs add another $5K+ drag.<br><br>
+<b>Backtest results:</b> 442 trades, 76.7% WR, -$10,198 net P&L. Only IWM, NFLX, JPM, UNH, and PLTR were profitable.<br><br>
+<b>Could be fixed by:</b> Better R:R filtering (min 33% credit ratio now enforced), or restricting to high-IV environments only.`},
+    earnings:{name:'Earnings Crush ⚠️',icon:'📊',desc:'DISABLED: -$3.8K backtest. AMZN/MSFT blow up.',badge:'r',
+        detail:`<b>How it works:</b> Sell strangles or iron condors before earnings announcements to capture IV crush. After earnings, implied volatility collapses and options lose value rapidly.<br><br>
+<b>Why it failed:</b> 73.8% WR but AMZN (-$4,587), MSFT (-$2,571), and META (-$2,001) had moves so large they blew through the short strikes. A few catastrophic losses wipe out months of small wins.<br><br>
+<b>Backtest results:</b> 260 trades, 73.8% WR, -$3,831 net P&L. Best performers: UNH (+$2,947), V (+$1,533), JPM (+$1,496).<br><br>
+<b>Could be fixed by:</b> Only selling earnings on stocks with historically small moves (banks, utilities), avoiding tech giants.`},
+    gamma_scalp:{name:'Gamma Scalp ❌',icon:'⚡',desc:'DISABLED: -$413K backtest. Catastrophic.',badge:'r',
+        detail:`<b>How it works:</b> Buy ATM straddles (long gamma) and delta-hedge throughout the day. Profit from large moves exceeding the time decay cost.<br><br>
+<b>Why it failed:</b> 5.8% WR — catastrophic. Theta decay destroys the position almost every day. The rare big moves don't come close to paying for the daily bleed. Lost $413K across 638 trades — the worst strategy by far.<br><br>
+<b>Backtest results:</b> 638 trades, 5.8% WR, -$413,559 net P&L. Not a single stock was profitable.<br><br>
+<b>Verdict:</b> Do not use. This strategy requires intraday gamma scalping (hedge every few minutes), which our system doesn't support. Would need HFT-level execution.`},
+    earnings_buy:{name:'Earnings Straddle Buy ❌',icon:'🎯',desc:'DISABLED: -$32K backtest. 36.8% WR.',badge:'r',
+        detail:`<b>How it works:</b> Buy straddles before earnings when historical move > implied move, betting the stock will move more than options are pricing in.<br><br>
+<b>Why it failed:</b> 36.8% WR. The market is efficient — implied moves are already well-priced. Even when the stock moves big, IV crush often wipes out the directional gain. Transaction costs add insult to injury.<br><br>
+<b>Backtest results:</b> 318 trades, 36.8% WR, -$32,515 net P&L.<br><br>
+<b>Verdict:</b> The market prices earnings moves accurately. Buying premium before earnings is a losing proposition long-term.`},
+    pairs:{name:'Pairs Trading ❌',icon:'🔄',desc:'DISABLED: -$11K backtest. No edge over random.',badge:'r',
+        detail:`<b>How it works:</b> Trade correlated stock pairs (AMD/NVDA, GOOGL/META, JPM/V, AAPL/MSFT). When the spread deviates from mean, go long the cheap one and short the expensive one.<br><br>
+<b>Why it failed:</b> 50% WR = coin flip. Mean reversion worked sometimes but not reliably enough. Correlations break down during market stress — exactly when you need them most.<br><br>
+<b>Backtest results:</b> 86 trades, 50.0% WR, -$11,760 net P&L. No edge over random baseline.<br><br>
+<b>Verdict:</b> Pairs trading needs much more sophisticated cointegration analysis and faster execution than we have.`},
+    momentum:{name:'Momentum ❌',icon:'🚀',desc:'DISABLED: -$1.9K backtest. Costs eat the edge.',badge:'r',
+        detail:`<b>How it works:</b> Use RSI + MACD to identify directional momentum, then enter vertical spreads in the direction of the trend.<br><br>
+<b>Why it failed:</b> 75.2% WR — the signals are decent! But the edge is razor thin. After transaction costs (commissions + slippage on 4 legs), the tiny profit per trade becomes a tiny loss per trade.<br><br>
+<b>Backtest results:</b> 101 trades, 75.2% WR, -$1,965 net P&L. Almost breakeven — might work with lower costs.<br><br>
+<b>Could be fixed by:</b> Reducing to 2-leg trades (cheaper), using wider spreads for better credits, or trading only the highest-conviction signals.`},
+    calendar:{name:'Calendar Spread ❌',icon:'📅',desc:'DISABLED: -$1.9K backtest. Loses on volatile stocks.',badge:'r',
+        detail:`<b>How it works:</b> Sell a near-term option and buy a longer-term option at the same strike. Profit from the front month decaying faster than the back month (time spread).<br><br>
+<b>Why it failed:</b> 69.3% WR but on volatile individual stocks, big moves blow through the position. Calendar spreads work best on low-volatility underlyings with predictable ranges.<br><br>
+<b>Backtest results:</b> 319 trades, 69.3% WR, -$1,938 net P&L. Nearly breakeven — wrong universe of stocks.<br><br>
+<b>Could be fixed by:</b> Only trading on low-vol ETFs (SPY, DIA), or using the strategy during low-VIX environments only.`},
 };
 async function loadStrats(){
     try{
@@ -815,10 +869,18 @@ async function loadStrats(){
     }catch(e){console.error('loadStrats error',e)}
 }
 function showStratDetail(k){const i=STRAT_MAP[k];if(!i)return;
-    document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:12px;align-items:center">
-    <div class="strat-icon" style="width:48px;height:48px;font-size:24px">${i.icon}</div>
-    <div><div style="font-weight:700;color:var(--accent);font-family:Orbitron">${i.name}</div>
-    <div style="margin-top:4px">${i.detail||''}</div></div></div>`;
+    const badge=i.badge==='g'?'APPROVED':i.badge==='r'?'REJECTED':'PENDING';
+    const bcolor=i.badge==='g'?'var(--green)':i.badge==='r'?'var(--red)':'#ff8c00';
+    document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:16px;align-items:flex-start">
+    <div class="strat-icon" style="width:56px;height:56px;font-size:28px;flex-shrink:0">${i.icon}</div>
+    <div style="flex:1"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-weight:700;color:var(--accent);font-family:Orbitron;font-size:16px">${i.name}</span>
+        <span class="badge badge-${i.badge}" style="font-size:9px">${badge}</span>
+    </div>
+    <div style="color:var(--dim);font-size:11px;margin-bottom:10px">${i.desc}</div>
+    <div style="line-height:1.6;font-size:12px;color:var(--fg)">${i.detail||'No details available.'}</div>
+    </div></div>`;
+    document.getElementById('strat-detail').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 // ═══ SCANNER ═══
@@ -1093,43 +1155,81 @@ async function loadJournal(){
         if(!orders||!orders.length||orders.error){
             body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled orders yet</td></tr>';return;
         }
-        const filled=orders.filter(o=>o.status==='filled').sort((a,b)=>new Date(b.filled_at||b.created_at)-new Date(a.filled_at||a.created_at));
+        // Only show top-level orders (multi-leg parents + standalone), skip child legs
+        const filled=orders.filter(o=>o.status==='filled'&&!o.ratio_qty).sort((a,b)=>new Date(b.filled_at||b.created_at)-new Date(a.filled_at||a.created_at));
         if(!filled.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled orders yet</td></tr>';return}
+        const getStrike=s=>{const m=(s||'').match(/(\d{8})$/);return m?parseInt(m[1])/1000:0};
+        const getUnderlying=s=>(s||'').match(/^([A-Z]+)/)?.[0]||s;
+        const getExpiry=s=>{const m=(s||'').match(/(\d{6})/);return m?`20${m[1].slice(0,2)}-${m[1].slice(2,4)}-${m[1].slice(4,6)}`:''};
         let h='';
-        for(const o of filled.slice(0,100)){
-            const date=new Date(o.filled_at||o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-            let sym=o.symbol||'';
-            let underlying=sym;
-            let strike='';
-            // Parse option symbols
-            const optMatch=sym.match(/^([A-Z]+)(\d{6})([PC])(\d{8})$/);
-            if(optMatch){
-                underlying=optMatch[1];
-                const pc=optMatch[3]==='P'?'Put':'Call';
-                strike='$'+(parseInt(optMatch[4])/1000);
-                sym=`${underlying} ${strike} ${pc}`;
-            }
-            // Detect strategy
-            let strat='—';
+        for(const o of filled.slice(0,50)){
+            const date=new Date(o.filled_at||o.created_at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
             const legs=o.legs||[];
-            if(o.order_class==='mleg'&&legs.length>=4)strat='Iron Condor';
-            else if(o.order_class==='mleg'&&legs.length===2)strat='Spread';
-            else if(optMatch&&o.side==='sell'&&optMatch[3]==='P')strat='Wheel (CSP)';
-            else if(optMatch&&o.side==='sell'&&optMatch[3]==='C')strat='Wheel (CC)';
-            else if(optMatch)strat='Option';
-            else strat='Stock';
-            const price=o.filled_avg_price?fmt(parseFloat(o.filled_avg_price)):'—';
-            const side=o.side||'';
-            const reason=o.order_class==='mleg'?'Multi-leg spread':side==='sell'?'Sell premium':'Buy';
-            h+=`<tr>
-                <td>${date}</td>
-                <td>${strat}</td>
-                <td style="font-weight:700;color:var(--cyan)">${sym}</td>
-                <td>${side==='buy'?price:'—'}</td>
-                <td>${side==='sell'?price:'—'}</td>
-                <td>—</td>
-                <td style="color:var(--dim)">${reason}</td>
-            </tr>`;
+            const credit=o.filled_avg_price?parseFloat(o.filled_avg_price):0;
+            
+            if(o.order_class==='mleg'&&legs.length>0){
+                // Multi-leg trade — show as one grouped entry
+                const underlying=getUnderlying(legs[0]?.symbol);
+                const puts=legs.filter(l=>(l.symbol||'').includes('P'));
+                const calls=legs.filter(l=>(l.symbol||'').includes('C'));
+                const expiry=getExpiry(legs[0]?.symbol);
+                let strat='Spread',desc='',detail='';
+                
+                if(puts.length===2&&calls.length===2){
+                    strat='🦅 Iron Condor';
+                    const sp=puts.find(l=>l.side==='sell'),bp=puts.find(l=>l.side==='buy');
+                    const sc=calls.find(l=>l.side==='sell'),bc=calls.find(l=>l.side==='buy');
+                    desc=`$${getStrike(bp?.symbol)}/$${getStrike(sp?.symbol)}P · $${getStrike(sc?.symbol)}/$${getStrike(bc?.symbol)}C`;
+                    detail=`Credit: $${Math.abs(credit).toFixed(2)} · Exp: ${expiry} · Close at 50% or 7 DTE`;
+                }else if(puts.length===2){
+                    strat='📉 Put Spread';
+                    const sp=puts.find(l=>l.side==='sell'),bp=puts.find(l=>l.side==='buy');
+                    desc=`$${getStrike(bp?.symbol)}/$${getStrike(sp?.symbol)} Put spread`;
+                    detail=`Credit: $${Math.abs(credit).toFixed(2)} · Exp: ${expiry}`;
+                }else if(calls.length===2){
+                    strat='📈 Call Spread';
+                    const sc=calls.find(l=>l.side==='sell'),bc=calls.find(l=>l.side==='buy');
+                    desc=`$${getStrike(sc?.symbol)}/$${getStrike(bc?.symbol)} Call spread`;
+                    detail=`Credit: $${Math.abs(credit).toFixed(2)} · Exp: ${expiry}`;
+                }
+                
+                h+=`<tr style="background:rgba(255,140,0,0.04)">
+                    <td>${date}</td>
+                    <td><span style="color:#ff8c00;font-weight:700">${strat}</span></td>
+                    <td style="font-weight:700;color:var(--cyan)">${underlying}</td>
+                    <td colspan="2" style="font-size:11px">${desc}</td>
+                    <td class="pos">${fmt(Math.abs(credit)*100)}</td>
+                    <td style="color:var(--dim);font-size:11px">${detail}</td>
+                </tr>`;
+            }else{
+                // Single-leg order
+                let sym=o.symbol||'';
+                const optMatch=sym.match(/^([A-Z]+)(\d{6})([PC])(\d{8})$/);
+                let strat='Stock',underlying=sym,desc='';
+                if(optMatch){
+                    underlying=optMatch[1];
+                    const pc=optMatch[3]==='P'?'Put':'Call';
+                    const strike='$'+(parseInt(optMatch[4])/1000);
+                    const expiry=getExpiry(sym);
+                    if(o.side==='sell'&&pc==='Put'){strat='🎡 CSP';desc=`Sell ${strike} Put · Exp: ${expiry}`}
+                    else if(o.side==='sell'&&pc==='Call'){strat='🎡 CC';desc=`Sell ${strike} Call · Exp: ${expiry}`}
+                    else if(o.side==='buy'){strat=`Buy ${pc}`;desc=`${strike} ${pc} · Exp: ${expiry}`}
+                    else{strat=pc;desc=`${strike} · Exp: ${expiry}`}
+                }else{
+                    desc=`${o.side==='buy'?'Buy':'Sell'} ${o.filled_qty||o.qty} shares`;
+                }
+                const price=o.filled_avg_price?fmt(Math.abs(parseFloat(o.filled_avg_price))):'—';
+                const intent=o.position_intent||'';
+                const action=intent.includes('close')?'CLOSE':intent.includes('open')?'OPEN':'—';
+                h+=`<tr>
+                    <td>${date}</td>
+                    <td><span style="color:var(--cyan);font-weight:600">${strat}</span></td>
+                    <td style="font-weight:700;color:var(--cyan)">${underlying}</td>
+                    <td colspan="2" style="font-size:11px">${desc}</td>
+                    <td>${price}</td>
+                    <td style="color:var(--dim);font-size:11px">${action}</td>
+                </tr>`;
+            }
         }
         body.innerHTML=h;
     }catch(e){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Error loading journal: '+e.message+'</td></tr>'}
