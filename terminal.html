@@ -433,32 +433,10 @@ function showTab(el,id){
 // ═══ FIREBASE ═══
 const fbApp=firebase.initializeApp({databaseURL:'https://sambot-tasks-default-rtdb.firebaseio.com'});
 const db=firebase.database();
-const FB_CACHE={};
 
-// Map API paths to Firebase paths
-const FB_MAP={
-    '/api/status':'trading/status',
-    '/api/positions':'trading/positions',
-    '/api/orders':'trading/orders',
-    '/api/regime':'trading/regime',
-    '/api/strategies':'trading/strategies',
-    '/api/backtest-results':'trading/backtest_results',
-    '/api/equity-history':'trading/equity_history',
-    '/api/iv-scan':'trading/iv_scan',
-    '/api/charts':'trading/charts',
-    '/api/scan-log':'trading/scan_log',
-};
-
+// Primary: static JSON files (correct Alpaca format from publish_data.py)
+// Firebase: realtime listener triggers re-fetch of static files
 async function api(p){
-    const fbPath=FB_MAP[p];
-    if(fbPath){
-        try{
-            const snap=await db.ref(fbPath).once('value');
-            const val=snap.val();
-            if(val)return val;
-        }catch(e){console.warn('Firebase read failed for',p,e)}
-    }
-    // Fallback to static JSON
     const c=new AbortController();const t=setTimeout(()=>c.abort(),8000);
     try{
         const url=(API?API+p:p)+'.json';
@@ -467,16 +445,20 @@ async function api(p){
         return r.json();
     }catch(e){clearTimeout(t);return {error:'offline'}}
 }
+
+// Backtest results use Firebase directly (larger, less frequent updates)
+async function apiFB(path){
+    try{const snap=await db.ref(path).once('value');return snap.val()||{error:'empty'}}
+    catch(e){return {error:e.message}}
+}
+
 async function apiPost(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
 
 // ═══ FIREBASE REALTIME LISTENERS ═══
 function setupRealtimeListeners(){
-    // Auto-refresh when data changes
-    db.ref('trading/status').on('value',snap=>{
-        const d=snap.val();if(d){FB_CACHE['/api/status']=d;refreshDash()}
-    });
-    db.ref('trading/positions').on('value',snap=>{
-        const d=snap.val();if(d){FB_CACHE['/api/positions']=d;refreshDash()}
+    // When publish_data.py updates Firebase, trigger dashboard refresh
+    db.ref('trading/status/timestamp').on('value',snap=>{
+        if(snap.val()){refreshAll();addLog('📡 Data synced','info')}
     });
     addLog('🔥 Firebase realtime connected','system');
 }
@@ -741,7 +723,7 @@ async function runScan(){
 
 // ═══ BACKTESTS ═══
 async function loadBT(){
-    try{const d=await api('/api/backtest-results');const g=document.getElementById('bt-grid');
+    try{let d=await api('/api/backtest-results');if(!d||!d.results)d=await apiFB('trading/backtest_results');const g=document.getElementById('bt-grid');
     if(!d||!d.results){g.innerHTML='<div class="card span2" style="color:var(--dim);padding:30px">No backtest data</div>';return}
     // Sort by PnL descending
     const entries=Object.entries(d.results).sort((a,b)=>(b[1].stats?.total_pnl||0)-(a[1].stats?.total_pnl||0));
