@@ -1632,6 +1632,11 @@ async function loadChainData(underlying, expiry){
         }
         h+='</tbody></table>';
         document.getElementById('chain-body').innerHTML=h;
+        // Auto-scroll to first position row
+        setTimeout(()=>{
+            const posRow=document.querySelector('#chain-body tr[style*="255,140,0"]');
+            if(posRow)posRow.scrollIntoView({block:'center',behavior:'smooth'});
+        },100);
     }catch(e){
         document.getElementById('chain-body').innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error loading chain: ${e.message}</div>`;
     }
