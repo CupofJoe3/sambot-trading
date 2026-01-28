@@ -328,10 +328,10 @@
 <!-- PERFORMANCE -->
 <div class="panel" id="p-performance">
     <div class="grid g4" style="margin-bottom:14px">
-        <div class="card"><div class="card-t">Live P&L</div><div class="gk-val pos" id="perf-pl" style="margin-top:8px">--</div><div class="card-sub" id="perf-pct">--</div></div>
-        <div class="card"><div class="card-t">Total Trades</div><div class="gk-val" id="perf-trades" style="margin-top:8px">--</div><div class="card-sub"><span id="perf-open">--</span> open</div></div>
-        <div class="card"><div class="card-t">Cash</div><div class="gk-val" id="perf-cash" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Buying Power</div><div class="gk-val" id="perf-bp" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Live P&L</div><div class="gk-val pos" id="ptab-pl" style="margin-top:8px">--</div><div class="card-sub" id="ptab-pct">--</div></div>
+        <div class="card"><div class="card-t">Total Trades</div><div class="gk-val" id="ptab-trades" style="margin-top:8px">--</div><div class="card-sub"><span id="ptab-open">--</span> open</div></div>
+        <div class="card"><div class="card-t">Cash</div><div class="gk-val" id="ptab-cash" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Buying Power</div><div class="gk-val" id="ptab-bp" style="margin-top:8px">--</div></div>
     </div>
 </div>
 
@@ -573,12 +573,24 @@ async function refreshAll(){
         document.getElementById('daily-pnl').textContent=fmt(pnl);document.getElementById('daily-pnl').className='card-v '+cls(pnl);
         document.getElementById('daily-sub').textContent=fmtPct(pnl/1000);
         // Performance panel
+        // Dashboard performance summary
         document.getElementById('perf-pl').textContent=fmt(pnl);document.getElementById('perf-pl').className='gk-val '+cls(pnl);
         document.getElementById('perf-pct').textContent=fmtPct(pnl/1000);document.getElementById('perf-pct').className='gk-val '+cls(pnl);
-        document.getElementById('perf-trades').textContent=Object.values(status.strategies).reduce((s,v)=>s+(v.total_trades||0),0);
-        document.getElementById('perf-open').textContent=positions.length;
+        const totalTrades=Object.values(status.strategies).reduce((s,v)=>s+(v.total_trades||0),0);
+        document.getElementById('perf-trades').textContent=totalTrades;
+        const unds=new Set();positions.forEach(x=>{const m=(x.symbol||'').match(/^([A-Z]+)/);if(m)unds.add(m[1])});
+        document.getElementById('perf-open').textContent=`${unds.size} trades (${positions.length} legs)`;
         document.getElementById('perf-cash').textContent=fmtK(cash);
         document.getElementById('perf-bp').textContent=fmtK(bp);
+        // Performance tab (separate IDs)
+        try{
+            document.getElementById('ptab-pl').textContent=fmt(pnl);document.getElementById('ptab-pl').className='gk-val '+cls(pnl);
+            document.getElementById('ptab-pct').textContent=fmtPct(pnl/1000);document.getElementById('ptab-pct').className='gk-val '+cls(pnl);
+            document.getElementById('ptab-trades').textContent=totalTrades;
+            document.getElementById('ptab-open').textContent=`${unds.size} trades (${positions.length} legs)`;
+            document.getElementById('ptab-cash').textContent=fmtK(cash);
+            document.getElementById('ptab-bp').textContent=fmtK(bp);
+        }catch(e){}
         const dd=status.risk.drawdown;
         document.getElementById('risk-level').textContent=status.risk.alert_level;
         document.getElementById('dd-sub').textContent=`DD: ${dd.toFixed(2)}% | Scale: ${(status.risk.position_scale*100).toFixed(0)}%`;
@@ -609,10 +621,13 @@ function updateAnalysis(s,p,pnl){
     // VIX / SPY
     if(s.vix) lines.push(`VIX: ${s.vix.toFixed(1)} | SPY: $${s.spy_price?.toFixed(2)||'—'}`);
     
-    // Position summary
+    // Position summary — group by underlying to count trades vs legs
     if(p.length){
         const totalPL=p.reduce((s,x)=>s+parseFloat(x.unrealized_pl||0),0);
-        lines.push(`${p.length} position${p.length>1?'s':''} | Unrealized: <span class="${cls(totalPL)}">${fmt(totalPL)}</span>`);
+        const underlyings=new Set();
+        p.forEach(x=>{const m=(x.symbol||'').match(/^([A-Z]+)/);if(m)underlyings.add(m[1])});
+        const tradeCount=underlyings.size;
+        lines.push(`${tradeCount} trade${tradeCount>1?'s':''} (${p.length} legs) | Unrealized: <span class="${cls(totalPL)}">${fmt(totalPL)}</span>`);
     }else{
         lines.push('No open positions — scanning for setups');
     }
