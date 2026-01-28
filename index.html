@@ -672,12 +672,21 @@ function renderPos(pos,id,pct=false){
 
 // ═══ STRATEGIES ═══
 const STRAT_MAP={
-    iron_condor:{name:'Iron Condor',icon:'🦅',desc:'45 DTE, 12Δ, Tastytrade rules. IWM/DIA.',badge:'g',detail:'Sells OTM puts+calls with wings. Best on range-bound ETFs.'},
-    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle, 30 DTE, large caps',badge:'g',detail:'Cash-secured puts, covered calls when assigned. Our #1 strategy.'},
-    earnings:{name:'Earnings Crusher',icon:'📊',desc:'Pre-earnings IV crush capture',badge:'g',detail:'Sells strangles/ICs before earnings for IV crush.'},
-    bwb:{name:'Broken Wing Butterfly',icon:'🦋',desc:'Directional credit spread',badge:'y',detail:'Asymmetric butterfly for directional bias with credit.'},
-    gamma_scalp:{name:'Gamma Scalp',icon:'⚡',desc:'Long gamma + delta hedge',badge:'y',detail:'Buy straddles, hedge delta. High vol regime.'},
-    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium selling',badge:'y',detail:'Same-day expiry. SPX/SPY only.'},
+    // TIER 1: Profitable in walk-forward backtest
+    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle. +$98K backtest, 90.6% WR',badge:'g',detail:'Cash-secured puts, covered calls when assigned. Our #1 earner. Walk-forward: +$98,240 over 1,220 trades.'},
+    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium. +$35K backtest, 64.3% WR ✅',badge:'g',detail:'Same-day expiry credit spreads. ONLY strategy that passed statistical significance AND beat random baseline.'},
+    dividend:{name:'Dividend Capture',icon:'💰',desc:'CSP before ex-div. +$38K backtest, 66.1% WR',badge:'g',detail:'Sell puts before ex-dividend dates. Collect premium + dividend if assigned.'},
+    jade_lizard:{name:'Jade Lizard',icon:'🦎',desc:'Short put + bear call spread. +$19K backtest, 71.7% WR',badge:'g',detail:'Zero upside risk structure. Short put + bear call spread for premium.'},
+    bwb:{name:'BWB',icon:'🦋',desc:'Broken wing butterfly. +$8.2K backtest, 80% WR',badge:'y',detail:'Asymmetric butterfly. Walk-forward marginal but profitable. 1,334 trades tested.'},
+    // TIER 2: Lost money in backtest — DISABLED
+    iron_condor:{name:'Iron Condor ⚠️',icon:'🦅',desc:'DISABLED: -$7.9K backtest. Costs eat profit.',badge:'r',detail:'76.7% WR looks good but losses outweigh wins after transaction costs. $11K in costs alone.'},
+    vertical:{name:'Vertical Spread ⚠️',icon:'📐',desc:'DISABLED: -$10.2K backtest. Bad R:R ratio.',badge:'r',detail:'76.7% WR but average loss >> average win. Risk/reward not favorable after costs.'},
+    earnings:{name:'Earnings Crush ⚠️',icon:'📊',desc:'DISABLED: -$3.8K backtest. AMZN/MSFT blow up.',badge:'r',detail:'73.8% WR but a few big losers (AMZN, MSFT) wipe out all gains.'},
+    gamma_scalp:{name:'Gamma Scalp ❌',icon:'⚡',desc:'DISABLED: -$413K backtest. Catastrophic.',badge:'r',detail:'5.8% WR. Theta decay destroys positions before gamma kicks in. Do not use.'},
+    earnings_buy:{name:'Earnings Straddle Buy ❌',icon:'🎯',desc:'DISABLED: -$32K backtest. 36.8% WR.',badge:'r',detail:'Buying straddles before earnings. Implied move already priced in — loses after costs.'},
+    pairs:{name:'Pairs Trading ❌',icon:'🔄',desc:'DISABLED: -$11K backtest. No edge over random.',badge:'r',detail:'50% WR = coin flip. Mean reversion not reliable enough after transaction costs.'},
+    momentum:{name:'Momentum ❌',icon:'🚀',desc:'DISABLED: -$1.9K backtest. Costs eat the edge.',badge:'r',detail:'RSI/MACD signals have slight edge but transaction costs eliminate profit.'},
+    calendar:{name:'Calendar Spread ❌',icon:'📅',desc:'DISABLED: -$1.9K backtest. Loses on volatile stocks.',badge:'r',detail:'Term structure play. Doesn\'t work well on individual volatile stocks.'},
 };
 async function loadStrats(){
     try{
