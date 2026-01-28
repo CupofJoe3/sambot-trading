@@ -438,11 +438,37 @@ function showTab(el,id){
     document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id==='p-'+id));
 }
 
-// ═══ FIREBASE ═══
+// ═══ LIVE API ═══
+const LIVE_API = 'http://localhost:5555';
+let liveDataCache = null;
+let lastFetchTime = 0;
+
+// Fetch live data from API
+async function fetchLiveData(force = false) {
+    const now = Date.now();
+    // Cache for 10 seconds unless forced
+    if (!force && liveDataCache && (now - lastFetchTime) < 10000) {
+        return liveDataCache;
+    }
+    
+    try {
+        const response = await fetch(`${LIVE_API}/live-data`);
+        if (!response.ok) throw new Error(`API returned ${response.status}`);
+        liveDataCache = await response.json();
+        lastFetchTime = now;
+        addLog('📡 Live data fetched from Alpaca', 'info');
+        return liveDataCache;
+    } catch (e) {
+        addLog(`⚠️ Live API error: ${e.message}`, 'warn');
+        // Fallback to Firebase if live API fails
+        return await fetchFirebaseData();
+    }
+}
+
+// Firebase backup for when live API is down
 const fbApp=firebase.initializeApp({databaseURL:'https://sambot-tasks-default-rtdb.firebaseio.com'});
 const db=firebase.database();
 
-// ═══ ALL DATA FROM FIREBASE ═══
 const FB_PATH_MAP={
     '/api/status':'trading/status',
     '/api/positions':'trading/positions',
@@ -459,13 +485,10 @@ const FB_PATH_MAP={
     '/api/chains':'trading/chains',
 };
 
-// Convert Firebase positions dict → Alpaca-style array
 function fbPosToArray(posData){
     if(!posData||typeof posData!=='object')return [];
-    // Handle {items: [...]} wrapper from publish_data.py
     if(posData.items&&Array.isArray(posData.items))return posData.items;
     if(Array.isArray(posData))return posData;
-    // Handle dict keyed by symbol (older format)
     return Object.entries(posData).map(([sym,p])=>({
         symbol:sym,
         unrealized_pl:p.unrealized_pnl||p.unrealized_pl||0,
@@ -479,7 +502,6 @@ function fbPosToArray(posData){
     }));
 }
 
-// Convert Firebase orders dict → array
 function fbOrdersToArray(ordData){
     if(!ordData)return [];
     if(Array.isArray(ordData))return ordData;
@@ -488,19 +510,44 @@ function fbOrdersToArray(ordData){
     return Object.values(ordData);
 }
 
-// Firebase cache for realtime data
-const fbCache={};
+async function fetchFirebaseData(){
+    try{
+        const snap=await db.ref('trading/positions').once('value');
+        const positions = fbPosToArray(snap.val());
+        const acct=await db.ref('trading/status').once('value');
+        const status=acct.val()||{};
+        return {
+            account: {
+                equity: status.equity || 0,
+                cash: status.cash || 0,
+                buying_power: status.buying_power || 0,
+                portfolio_value: status.equity || 0
+            },
+            positions: positions,
+            chains: {},
+            timestamp: new Date().toISOString()
+        };
+    }catch(e){
+        return {error:e.message};
+    }
+}
 
+// Main API function - tries live first, falls back to Firebase
 async function api(p){
-    // Check cache first (populated by realtime listeners)
-    if(fbCache[p]!==undefined)return fbCache[p];
+    if (p === '/api/positions' || p === '/api/status') {
+        const data = await fetchLiveData();
+        if (data.error) return data;
+        if (p === '/api/positions') return data.positions;
+        if (p === '/api/status') return data.account;
+    }
+    
+    // For other endpoints, still use Firebase
     const fbPath=FB_PATH_MAP[p];
     if(!fbPath)return {error:'unknown path'};
     try{
         const snap=await db.ref(fbPath).once('value');
         let val=snap.val();
         if(val===null)return {error:'empty'};
-        // Transform positions and orders
         if(p==='/api/positions')val=fbPosToArray(val);
         if(p==='/api/orders')val=fbOrdersToArray(val);
         return val;
@@ -517,18 +564,22 @@ async function apiPost(p,d){
     catch(e){return {error:e.message}}
 }
 
-// ═══ FIREBASE REALTIME LISTENERS ═══
+// ═══ LIVE DATA POLLING ═══
+let liveDataInterval = null;
+
 function setupRealtimeListeners(){
-    // Status — cache + refresh dashboard
-    db.ref('trading/status').on('value',snap=>{
-        const val=snap.val();
-        if(val){fbCache['/api/status']=val;refreshAll();addLog('📡 Status synced','info')}
-    });
-    // Positions — cache as Alpaca-style array
-    db.ref('trading/positions').on('value',snap=>{
-        const val=snap.val();
-        if(val){fbCache['/api/positions']=fbPosToArray(val)}
-    });
+    // Poll live API every 15 seconds
+    if (liveDataInterval) clearInterval(liveDataInterval);
+    
+    liveDataInterval = setInterval(async () => {
+        await fetchLiveData(true); // Force refresh
+        refreshAll();
+    }, 15000); // 15 seconds
+    
+    // Initial fetch
+    fetchLiveData(true).then(() => refreshAll());
+    
+    // Keep Firebase listeners for other data
     // Orders
     db.ref('trading/orders').on('value',snap=>{
         const val=snap.val();
@@ -1563,9 +1614,23 @@ function closeChain(){
 
 async function loadChainData(underlying, expiry){
     try{
-        const chains=await api('/api/chains');
+        // Fetch fresh live data
+        const liveData = await fetchLiveData(true); // force refresh
         const key=`${underlying}_${expiry}`;
-        const data=chains?.[key];
+        const chainData=liveData.chains?.[key];
+        
+        // Convert to old format for compatibility
+        let data = null;
+        if (chainData) {
+            data = {
+                chain: [
+                    ...chainData.calls.map(c => ({...c, type: 'call'})),
+                    ...chainData.puts.map(p => ({...p, type: 'put'}))
+                ],
+                updated: liveData.timestamp
+            };
+        }
+        
         const curPrice=_underlyingPrices[underlying]||0;
         
         document.getElementById('chain-price').textContent=curPrice?`$${curPrice.toFixed(2)}`:'';
