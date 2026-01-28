@@ -319,10 +319,10 @@
 <!-- PERFORMANCE -->
 <div class="panel" id="p-performance">
     <div class="grid g4" style="margin-bottom:14px">
-        <div class="card"><div class="card-t">Total Return</div><div class="card-v pos" id="perf-ret" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Sharpe Ratio</div><div class="card-v neu" id="perf-sharpe" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Win Rate</div><div class="card-v" id="perf-wr" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Profit Factor</div><div class="card-v" id="perf-pf" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Live P&L</div><div class="gk-val pos" id="perf-pl" style="margin-top:8px">--</div><div class="card-sub" id="perf-pct">--</div></div>
+        <div class="card"><div class="card-t">Total Trades</div><div class="gk-val" id="perf-trades" style="margin-top:8px">--</div><div class="card-sub"><span id="perf-open">--</span> open</div></div>
+        <div class="card"><div class="card-t">Cash</div><div class="gk-val" id="perf-cash" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Buying Power</div><div class="gk-val" id="perf-bp" style="margin-top:8px">--</div></div>
     </div>
 </div>
 
@@ -701,23 +701,56 @@ async function runScan(){
 // ═══ BACKTESTS ═══
 async function loadBT(){
     try{const d=await api('/api/backtest-results');const g=document.getElementById('bt-grid');
-    if(d.message){g.innerHTML=`<div class="card span2" style="color:var(--dim);padding:30px">${d.message}</div>`;return}
-    let h='';Object.entries(d).forEach(([k,v])=>{if(!v.strategy)return;const ok=v.win_rate>=55&&v.profit_factor>=1.2;
-        h+=`<div class="bt"><div class="bt-v" style="color:${ok?'var(--green)':'var(--red)'}">${ok?'✅ APPROVED':'❌ REJECTED'} — ${v.strategy} on ${v.symbol}</div>
-        <div class="bt-row"><span class="lbl">Trades</span><span>${v.total_trades}</span></div>
-        <div class="bt-row"><span class="lbl">Win Rate</span><span class="${v.win_rate>=55?'pos':'neg'}">${v.win_rate}%</span></div>
-        <div class="bt-row"><span class="lbl">P&L</span><span class="${cls(v.total_pnl)}">${fmt(v.total_pnl)}</span></div>
-        <div class="bt-row"><span class="lbl">Annual Return</span><span class="${cls(v.annual_return)}">${v.annual_return}%</span></div>
-        <div class="bt-row"><span class="lbl">Profit Factor</span><span>${v.profit_factor}</span></div>
-        <div class="bt-row"><span class="lbl">Sharpe</span><span>${v.sharpe_estimate}</span></div>
-        <div class="bt-row"><span class="lbl">Max DD</span><span>${v.max_drawdown}%</span></div>
-        ${v.monte_carlo?`<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-        <div class="card-t" style="margin-bottom:4px">🎲 Monte Carlo</div>
-        <div class="bt-row"><span class="lbl">P(Profit)</span><span class="${v.monte_carlo.prob_profit>60?'pos':'neg'}">${v.monte_carlo.prob_profit}%</span></div>
-        <div class="bt-row"><span class="lbl">Median</span><span>${v.monte_carlo.median_return}%</span></div>
-        <div class="bt-row"><span class="lbl">Worst 5%</span><span class="neg">${v.monte_carlo.p5_return}%</span></div></div>`:''}</div>`;
-    });g.innerHTML=h||'<div class="card span2" style="color:var(--dim)">No data</div>';
-    }catch(e){}
+    if(!d||!d.results){g.innerHTML='<div class="card span2" style="color:var(--dim);padding:30px">No backtest data</div>';return}
+    // Sort by PnL descending
+    const entries=Object.entries(d.results).sort((a,b)=>(b[1].stats?.total_pnl||0)-(a[1].stats?.total_pnl||0));
+    let h=`<div class="card span2" style="padding:10px"><div class="card-t">🧪 Walk-Forward Backtest Results</div>
+        <div style="color:var(--dim);font-size:10px;margin:4px 0">Method: ${d.methodology?.walk_forward||'walk-forward'} | ${d.methodology?.monte_carlo_sims||1000} MC sims | Bonferroni correction | Run: ${d.run_date?.split('T')[0]||'--'}</div>
+        <div style="color:var(--dim);font-size:10px">⚠️ Survivorship bias warning: tested on currently-successful stocks</div></div>`;
+    entries.forEach(([name,r])=>{
+        const s=r.stats||{},sg=r.significance||{},mc=r.monte_carlo||{};
+        const trades=s.total_trades||0,wr=s.win_rate||0,pnl=s.total_pnl||0,sharpe=s.sharpe_ratio||0;
+        const verdict=r.verdict||'FAIL';
+        const vColor=verdict==='PASS'?'var(--green)':verdict==='MARGINAL'?'#ff8c00':'var(--red)';
+        const vIcon=verdict==='PASS'?'✅':verdict==='MARGINAL'?'🟡':'❌';
+        h+=`<div class="bt" style="border-left:3px solid ${vColor}">
+            <div class="bt-v" style="color:${vColor}">${vIcon} ${verdict} — ${name.replace(/_/g,' ').toUpperCase()}</div>
+            <div class="bt-row"><span class="lbl">Trades</span><span>${trades}</span></div>
+            <div class="bt-row"><span class="lbl">Win Rate</span><span class="${wr>=60?'pos':'neg'}">${wr.toFixed?wr.toFixed(1):wr}%</span></div>
+            <div class="bt-row"><span class="lbl">Net P&L</span><span class="${pnl>=0?'pos':'neg'}">${fmt(pnl)}</span></div>
+            <div class="bt-row"><span class="lbl">Costs</span><span class="neg">${fmt(s.total_costs||0)}</span></div>
+            <div class="bt-row"><span class="lbl">Sharpe</span><span class="${sharpe>=0.5?'pos':sharpe>=0?'neu':'neg'}">${typeof sharpe==='number'?sharpe.toFixed(2):sharpe}</span></div>
+            <div class="bt-row"><span class="lbl">Max DD</span><span class="neg">${fmt(s.max_drawdown||0)}</span></div>
+            <div class="bt-row"><span class="lbl">Profit Factor</span><span>${s.profit_factor||'--'}</span></div>
+            <div class="bt-row"><span class="lbl">Avg Days Held</span><span>${s.avg_days_held||'--'}</span></div>
+            ${sg.t_stat?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+            <div class="card-t" style="margin-bottom:4px">📊 Statistical Tests</div>
+            <div class="bt-row"><span class="lbl">t-stat</span><span>${typeof sg.t_stat==='number'?sg.t_stat.toFixed(2):sg.t_stat}</span></div>
+            <div class="bt-row"><span class="lbl">p-value</span><span class="${sg.p_value<0.05?'pos':'neg'}">${typeof sg.p_value==='number'?sg.p_value.toFixed(4):sg.p_value}</span></div>
+            <div class="bt-row"><span class="lbl">Deflated Sharpe</span><span>${typeof sg.deflated_sharpe==='number'?sg.deflated_sharpe.toFixed(3):sg.deflated_sharpe||'--'}</span></div>
+            <div class="bt-row"><span class="lbl">Significant?</span><span class="${sg.significant?'pos':'neg'}">${sg.significant?'YES ✅':'NO ❌'}</span></div>
+            <div class="bt-row"><span class="lbl">Beats Random?</span><span class="${r.beats_random?'pos':'neg'}">${r.beats_random?'YES ✅':'NO ❌'}</span></div>
+            </div>`:``}
+            ${mc.median_return!==undefined?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+            <div class="card-t" style="margin-bottom:4px">🎲 Monte Carlo (${mc.n_sims||1000} sims)</div>
+            <div class="bt-row"><span class="lbl">Median Return</span><span>${typeof mc.median_return==='number'?mc.median_return.toFixed(1):mc.median_return}%</span></div>
+            <div class="bt-row"><span class="lbl">5th Percentile</span><span class="neg">${typeof mc.p5_return==='number'?mc.p5_return.toFixed(1):mc.p5_return}%</span></div>
+            <div class="bt-row"><span class="lbl">95th Percentile</span><span class="pos">${typeof mc.p95_return==='number'?mc.p95_return.toFixed(1):mc.p95_return}%</span></div>
+            <div class="bt-row"><span class="lbl">P(Profit)</span><span class="${(mc.prob_profit||0)>50?'pos':'neg'}">${typeof mc.prob_profit==='number'?mc.prob_profit.toFixed(1):mc.prob_profit}%</span></div>
+            <div class="bt-row"><span class="lbl">Flag</span><span>${mc.flag||'--'}</span></div>
+            </div>`:``}
+        </div>`;
+    });
+    // Allocation
+    if(d.suggested_allocation&&Object.keys(d.suggested_allocation).length){
+        h+=`<div class="card span2" style="padding:12px;border-left:3px solid var(--green)"><div class="card-t">📊 Suggested Allocation</div>`;
+        Object.entries(d.suggested_allocation).forEach(([s,pct])=>{
+            h+=`<div class="bt-row"><span class="lbl">${s}</span><span class="pos">${pct}%</span></div>`;
+        });
+        h+=`</div>`;
+    }
+    g.innerHTML=h;
+    }catch(e){console.error('BT load error',e)}
 }
 
 // ═══ REGIME ═══
