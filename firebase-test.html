@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Connection Test</title>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #000; color: #0f0; }
+        .status { padding: 10px; margin: 10px 0; border: 1px solid #0f0; }
+        .error { color: #f00; }
+        .success { color: #0f0; }
+    </style>
+</head>
+<body>
+    <h1>Firebase Connection Test</h1>
+    <div id="status"></div>
+    
+    <script>
+        const statusDiv = document.getElementById('status');
+        
+        function log(msg, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'status ' + (isError ? 'error' : 'success');
+            div.textContent = new Date().toLocaleTimeString() + ' - ' + msg;
+            statusDiv.appendChild(div);
+        }
+        
+        try {
+            log('1. Initializing Firebase...');
+            const app = firebase.initializeApp({
+                databaseURL: 'https://sambot-tasks-default-rtdb.firebaseio.com'
+            });
+            log('✅ Firebase initialized');
+            
+            const db = firebase.database();
+            log('2. Getting database reference...');
+            
+            db.ref('trading/status').once('value').then(snap => {
+                const data = snap.val();
+                log('✅ Firebase connected!');
+                log('Data: ' + JSON.stringify(data, null, 2));
+            }).catch(err => {
+                log('❌ Firebase read failed: ' + err.message, true);
+            });
+            
+            // Live listener test
+            log('3. Setting up live listener...');
+            db.ref('trading/status').on('value', snap => {
+                const data = snap.val();
+                log('🔄 Live update received: equity=$' + data.equity);
+            });
+            
+        } catch (error) {
+            log('❌ ERROR: ' + error.message, true);
+        }
+    </script>
+</body>
+</html>
