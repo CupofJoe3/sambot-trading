@@ -650,7 +650,7 @@ async function refreshAll(){
         renderPos(positions,'d-pos');renderPos(positions,'pos-body',true);
         updateEquityChart(eq);
         document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false});
-    }catch(e){/* silently retry on next interval */}
+    }catch(e){console.error("refreshAll error:",e);addLog("Dashboard error: "+e.message,"error")}
 }
 function updateAnalysis(s,p,pnl){
     const el=document.getElementById('analysis-text');
