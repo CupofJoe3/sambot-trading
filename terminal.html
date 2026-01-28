@@ -1236,6 +1236,9 @@ loadChartIndex().then(()=>{loadOrders();loadJournal()});loadStrats();loadBT();se
 setTimeout(()=>{lastScanLogLen=0;loadScanLog()},2000);
 setTimeout(detectRegime,4000);
 setInterval(refreshAll,15000);setInterval(loadScanLog,15000);setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}),1000);
+// Auto-reload when new version deployed (checks every 30s)
+let _curV=null;
+setInterval(async()=>{try{const r=await fetch('/sambot-trading/version.json?t='+Date.now());const d=await r.json();if(!_curV){_curV=d.v}else if(d.v!==_curV){addLog('🔄 New version detected, reloading...','system');setTimeout(()=>location.reload(true),1000)}}catch(e){}},30000);
 setInterval(detectRegime,300000);
 </script>
 </body>
