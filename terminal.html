@@ -526,7 +526,7 @@ function setupRealtimeListeners(){
     // Positions — cache as Alpaca-style array
     db.ref('trading/positions').on('value',snap=>{
         const val=snap.val();
-        if(val){fbCache['/api/positions']=fbPosToArray(val);addLog('📡 Positions synced','info')}
+        if(val){fbCache['/api/positions']=fbPosToArray(val)}
     });
     // Orders
     db.ref('trading/orders').on('value',snap=>{
