@@ -240,6 +240,7 @@
             <div class="card-v" id="risk-level" style="font-size:18px">🟢 GREEN</div>
             <div class="card-s" id="dd-sub">DD: 0.0%</div>
             <div class="risk-meter"><div class="risk-bar g" id="r1"></div><div class="risk-bar" id="r2"></div><div class="risk-bar" id="r3"></div><div class="risk-bar" id="r4"></div><div class="risk-bar" id="r5"></div></div>
+            <div id="risk-detail" style="margin-top:6px;font-size:10px;color:var(--dim);line-height:1.5"></div>
         </div>
     </div>
     <div class="grid g4" style="margin-bottom:14px">
@@ -613,9 +614,31 @@ async function refreshAll(){
         riskEl.textContent=riskLevel;
         riskEl.style.color=riskColor;
         const ddSub=document.getElementById('dd-sub');
-        ddSub.textContent=`DD: ${dd.toFixed(2)}% | Scale: ${(posScale*100).toFixed(0)}% | Unreal: ${unrealPct.toFixed(1)}% | Score: ${riskScore.toFixed(0)}`;
+        ddSub.textContent=`DD: ${dd.toFixed(2)}% | Scale: ${(posScale*100).toFixed(0)}%`;
         const lv=[5,10,15,20,25],cc=['g','y','o','r','r'];
         for(let i=1;i<=5;i++)document.getElementById('r'+i).className='risk-bar'+(riskScore>=lv[i-1]*2?' '+cc[i-1]:'');
+        // Detailed risk breakdown
+        const rdEl=document.getElementById('risk-detail');
+        if(rdEl){
+            const ddPts=(Math.abs(dd)*2).toFixed(0);
+            const unrealPts=(Math.abs(Math.min(0,unrealPct))*1.5).toFixed(0);
+            const bpPts=(Math.max(0,bpUsed-50)*0.5).toFixed(0);
+            const posPts=(positions.length*2).toFixed(0);
+            let explanation='';
+            if(riskScore<12)explanation='Portfolio is well-balanced with minimal exposure.';
+            else if(riskScore<25)explanation='Moderate risk. Positions are within normal ranges.';
+            else if(riskScore<40)explanation='Elevated risk from open positions. Monitor closely.';
+            else explanation='High risk! Consider closing some positions to reduce exposure.';
+            rdEl.innerHTML=`
+                <div style="margin-bottom:4px"><b style="color:${riskColor}">Score: ${riskScore.toFixed(0)}/50</b> — ${explanation}</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 8px">
+                    <span>📉 Drawdown: ${dd.toFixed(2)}%</span><span style="color:var(--dim)">+${ddPts} pts</span>
+                    <span>💰 Unrealized: ${unrealPct.toFixed(1)}%</span><span style="color:var(--dim)">+${unrealPts} pts</span>
+                    <span>🏦 BP used: ${bpUsed.toFixed(0)}%</span><span style="color:var(--dim)">+${bpPts} pts</span>
+                    <span>📊 Positions: ${positions.length} legs</span><span style="color:var(--dim)">+${posPts} pts</span>
+                </div>
+                <div style="margin-top:4px;color:var(--dim)">GREEN &lt;12 · YELLOW &lt;25 · ORANGE &lt;40 · RED ≥40</div>`;
+        }
         document.getElementById('master-sw').checked=status.master_switch;
         document.getElementById('master-box').className='master'+(status.master_switch?' on':'');
         // Market analysis
@@ -1453,8 +1476,9 @@ function initChart(){
 }
 async function loadEquityHistory(){
     try{
-        const hist=await api('/api/equity-history');
-        if(hist&&hist.length){
+        let hist=await api('/api/equity-history');
+        if(hist&&hist.items)hist=hist.items; // unwrap Firebase {items:[]}
+        if(hist&&Array.isArray(hist)&&hist.length){
             eqData=hist.map(h=>({time:h.time,value:h.equity}));
             eqSeries.setData(eqData);
         }else{
