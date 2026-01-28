@@ -172,8 +172,6 @@
         ::-webkit-scrollbar-track{background:var(--bg)}
         ::-webkit-scrollbar-thumb{background:#2a2a3a;border-radius:1px}
     </style>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -321,23 +319,10 @@
 <!-- PERFORMANCE -->
 <div class="panel" id="p-performance">
     <div class="grid g4" style="margin-bottom:14px">
-        <div class="card"><div class="card-t">Total P&L</div><div class="card-v pos" id="perf-ret" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Win / Loss</div><div class="card-v neu" id="perf-winloss" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Total Return</div><div class="card-v pos" id="perf-ret" style="margin-top:8px">--</div></div>
+        <div class="card"><div class="card-t">Sharpe Ratio</div><div class="card-v neu" id="perf-sharpe" style="margin-top:8px">--</div></div>
         <div class="card"><div class="card-t">Win Rate</div><div class="card-v" id="perf-wr" style="margin-top:8px">--</div></div>
-        <div class="card"><div class="card-t">Avg Duration</div><div class="card-v" id="perf-dur" style="margin-top:8px">--</div></div>
-    </div>
-    <div class="grid g2" style="margin-bottom:14px">
-        <div class="card"><div class="card-t">Best Trade</div><div id="perf-best" style="margin-top:8px;font-size:12px;color:var(--green)">--</div></div>
-        <div class="card"><div class="card-t">Worst Trade</div><div id="perf-worst" style="margin-top:8px;font-size:12px;color:var(--red)">--</div></div>
-    </div>
-    <div class="card" style="margin-bottom:14px">
-        <div class="card-h"><span class="card-t">Strategy Breakdown</span></div>
-        <table><thead><tr><th>Strategy</th><th>Trades</th><th>Wins</th><th>Losses</th><th>Win Rate</th><th>P&L</th><th>Avg P&L</th></tr></thead>
-        <tbody id="perf-strat-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px">Loading...</td></tr></tbody></table>
-    </div>
-    <div class="card">
-        <div class="card-h"><span class="card-t">Equity Curve</span></div>
-        <div id="perf-eq-chart" style="height:250px"></div>
+        <div class="card"><div class="card-t">Profit Factor</div><div class="card-v" id="perf-pf" style="margin-top:8px">--</div></div>
     </div>
 </div>
 
@@ -348,8 +333,8 @@
 <div class="panel" id="p-journal">
     <div class="card">
         <div class="card-h"><span class="card-t">Trade Journal</span></div>
-        <table><thead><tr><th>Date & Time</th><th>Strategy</th><th>Symbol</th><th>Entry Price</th><th>Status</th><th>Live P&L</th><th>Reason</th></tr></thead>
-        <tbody id="j-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Loading journal...</td></tr></tbody></table>
+        <table><thead><tr><th>Date</th><th>Strategy</th><th>Symbol</th><th>Entry</th><th>Exit</th><th>P&L</th><th>Reason</th></tr></thead>
+        <tbody id="j-body"><tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Journal populates with trades</td></tr></tbody></table>
     </div>
 </div>
 
@@ -373,7 +358,7 @@
 </div>
 
 <script>
-const API='/sambot-trading';
+const API=window.location.pathname.includes('sambot-trading')?'/sambot-trading':'';
 
 // ═══ LOG ICONS ═══
 const LOG_ICONS={trade:'📈',alert:'⚠️',error:'❌',info:'ℹ️',system:'🖥️'};
@@ -444,42 +429,16 @@ function showTab(el,id){
 }
 
 // ═══ API ═══
-// Firebase setup
-let _fb=null,_fbDb=null;
-try{
-    firebase.initializeApp({databaseURL:"https://sambot-tasks-default-rtdb.firebaseio.com"});
-    _fbDb=firebase.database();
-    console.log('Firebase connected');
-}catch(e){console.warn('Firebase init failed:',e)}
-
-async function api(p){
-    // Convert path like /api/status to firebase key trading/status
-    const key='trading/'+p.replace('/api/','').replace(/-/g,'_');
-    if(_fbDb){
-        try{
-            const snap=await _fbDb.ref(key).once('value');
-            let val=snap.val();
-            if(val!==null){
-                // Firebase wraps arrays as {items:[...]}
-                if(val&&val.items)val=val.items;
-                // Firebase converts arrays to objects with numeric keys
-                if(val&&typeof val==='object'&&!Array.isArray(val)&&'0' in val){
-                    val=Object.values(val);
-                }
-                return val;
-            }
-        }catch(e){console.warn('Firebase read failed:',e)}
-    }
-    // Fallback to static JSON
-    const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);
-    try{
-        const url=API?API+p+'.json':p+'.json';
-        const r=await fetch(url,{signal:c.signal});clearTimeout(t);
-        const ct=r.headers.get('content-type')||'';
-        if(!ct.includes('json'))return{error:'Not available'};
-        return r.json();
-    }catch(e){clearTimeout(t);throw e}
+async function api(p){const c=new AbortController();const t=setTimeout(()=>c.abort(),15000);try{
+if(API){
+const r=await fetch(API+p,{signal:c.signal});clearTimeout(t);return r.json();
+}else{
+const r=await fetch(p+'.json',{signal:c.signal});clearTimeout(t);
+const ct=r.headers.get('content-type')||'';
+if(!ct.includes('json')){return {error:'Not available (static mode)'};}
+return r.json();
 }
+}catch(e){clearTimeout(t);throw e}}
 async function apiPost(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
 
 // ═══ MASTER ═══
@@ -509,13 +468,7 @@ async function refreshAll(){
         document.getElementById('perf-pl').textContent=fmt(pnl);document.getElementById('perf-pl').className='gk-val '+cls(pnl);
         document.getElementById('perf-pct').textContent=fmtPct(pnl/1000);document.getElementById('perf-pct').className='gk-val '+cls(pnl);
         document.getElementById('perf-trades').textContent=Object.values(status.strategies).reduce((s,v)=>s+(v.total_trades||0),0);
-        // Count trades not legs: group options by underlying+expiry
-        const _tradeGroups=new Set();
-        (positions||[]).forEach(p=>{
-            const m=(p.symbol||'').match(/^([A-Z]+)(\d{6})/);
-            _tradeGroups.add(m?m[1]+'_'+m[2]:p.symbol);
-        });
-        document.getElementById('perf-open').textContent=_tradeGroups.size;
+        document.getElementById('perf-open').textContent=positions.length;
         document.getElementById('perf-cash').textContent=fmtK(cash);
         document.getElementById('perf-bp').textContent=fmtK(bp);
         const dd=status.risk.drawdown;
@@ -548,13 +501,10 @@ function updateAnalysis(s,p,pnl){
     // VIX / SPY
     if(s.vix) lines.push(`VIX: ${s.vix.toFixed(1)} | SPY: $${s.spy_price?.toFixed(2)||'—'}`);
     
-    // Position summary — count trades not legs
+    // Position summary
     if(p.length){
-        const _tg=new Set();
-        p.forEach(x=>{const m=(x.symbol||'').match(/^([A-Z]+)(\d{6})/);_tg.add(m?m[1]+'_'+m[2]:x.symbol)});
-        const tradeCount=_tg.size;
         const totalPL=p.reduce((s,x)=>s+parseFloat(x.unrealized_pl||0),0);
-        lines.push(`${tradeCount} trade${tradeCount>1?'s':''} (${p.length} legs) | Unrealized: <span class="${cls(totalPL)}">${fmt(totalPL)}</span>`);
+        lines.push(`${p.length} position${p.length>1?'s':''} | Unrealized: <span class="${cls(totalPL)}">${fmt(totalPL)}</span>`);
     }else{
         lines.push('No open positions — scanning for setups');
     }
@@ -648,37 +598,8 @@ function renderPos(pos,id,pct=false){
             desc=`<b>Sell $${sp?.strike} Put</b> — Exp ${g.expShort}`;
             desc+=`<br><span style="color:var(--dim)">Premium:</span> $${premium.toFixed(2)} · <span style="color:var(--dim)">Breakeven:</span> $${(sp?.strike-premium).toFixed(2)}`;
             desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE. If assigned, own shares at discount.`;
-        }else if(strategy==='PUT SPREAD'){
-            // Bull put spread
-            const sp=shortPuts[0]?.strike||0,lp=longPuts[0]?.strike||0;
-            const width=sp-lp;
-            const credit=Math.abs(groupCost)/100;
-            const maxLoss=width-credit;
-            const breakeven=sp-credit;
-            desc=`<b>Bull Put Spread</b>: Sell $${sp} / Buy $${lp} Put — Exp ${g.expShort}`;
-            desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Max loss:</span> $${(maxLoss*100).toFixed(0)} · <span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}`;
-            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit ($${(credit*0.5).toFixed(2)} debit) or 7 DTE`;
-            desc+=`<br><span style="color:var(--dim)">Thesis:</span> ${g.underlying} stays above $${sp}. Bullish bias, collect theta.`;
-            desc+=`<br><span class="neg">Stop:</span> Close if loss exceeds 2x credit ($${(credit*2).toFixed(2)})`;
-        }else if(strategy==='CALL SPREAD'){
-            // Bear call spread
-            const sc=shortCalls[0]?.strike||0,lc=longCalls[0]?.strike||0;
-            const width=lc-sc;
-            const credit=Math.abs(groupCost)/100;
-            const maxLoss=width-credit;
-            const breakeven=sc+credit;
-            desc=`<b>Bear Call Spread</b>: Sell $${sc} / Buy $${lc} Call — Exp ${g.expShort}`;
-            desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Max loss:</span> $${(maxLoss*100).toFixed(0)} · <span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}`;
-            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE`;
-            desc+=`<br><span style="color:var(--dim)">Thesis:</span> ${g.underlying} stays below $${sc}. Bearish bias, collect theta.`;
-            desc+=`<br><span class="neg">Stop:</span> Close if loss exceeds 2x credit ($${(credit*2).toFixed(2)})`;
         }else{
-            // Generic multi-leg
-            const credit=Math.abs(groupCost)/100;
-            desc=g.legs.map(l=>`${parseInt(l.qty)<0?'Sell':'Buy'} $${l.strike} ${l.type}`).join(' · ')+` — Exp ${g.expShort}`;
-            desc+=`<br><span style="color:var(--dim)">Net credit:</span> $${credit.toFixed(2)}`;
-            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE`;
-            desc+=`<br><span class="neg">Stop:</span> Close if loss exceeds 2x credit`;
+            desc=g.legs.map(l=>`${parseInt(l.qty)<0?'Short':'Long'} $${l.strike} ${l.type}`).join(' · ')+` — Exp ${g.expShort}`;
         }
         
         // Group header row
@@ -727,266 +648,34 @@ function renderPos(pos,id,pct=false){
 }
 
 // ═══ STRATEGIES ═══
-// STRATEGY ALLOCATION RATIONALE (from quant library research):
-// Tier 1 (15% each): Highest win rate, most backtested (Tastytrade data)
-// Tier 2 (10% each): Strong research backing, proven mechanics
-// Tier 3 (5% each):  Newer/conditional strategies, need paper validation
-// Total = 100%. Rebalances as paper trading data comes in.
 const STRAT_MAP={
-    // --- TIER 1: Core Income (45% total) ---
-    iron_condor:{name:'Iron Condor',icon:'🦅',desc:'45 DTE, 16Δ, Tastytrade rules. IWM/DIA.',badge:'g',
-        detail:'Sells OTM puts+calls with wings. Best on range-bound ETFs. Tastytrade: 85% win rate at 16Δ.',
-        howItWorks:'Sell OTM put spread + OTM call spread simultaneously. Collect premium from both sides. Profit if underlying stays within the short strikes.',
-        entry:'IV Rank > 35, 16-delta strikes at 45 DTE on ETFs (IWM, DIA, SPY). Min credit ≥25% of wing width.',
-        exit:'Close at 50% max profit OR 21 DTE remaining OR stop at 2x credit received.',
-        idealConditions:'Range-bound / low-trend markets. High IV rank. Neutral outlook.',
-        allocation:15},
-    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle, 30 DTE, large caps',badge:'g',
-        detail:'Cash-secured puts, covered calls when assigned. Highest win rate strategy historically.',
-        howItWorks:'Sell cash-secured puts on quality stocks. If assigned, sell covered calls. Repeat. Generates income in any market.',
-        entry:'Stock above 200 SMA, RSI < 70, IV Rank > 30. Sell 25Δ puts at 30 DTE on large caps.',
-        exit:'Close CSP at 50% profit or 7 DTE. If assigned, sell CC at cost basis strike. Close CC at 50% or expiry.',
-        idealConditions:'Bullish or neutral market. Stocks you\'d want to own. Moderate IV.',
-        allocation:15},
-    vertical:{name:'Vertical Spread',icon:'📐',desc:'Bull puts or bear calls, 30 DTE',badge:'g',
-        detail:'Directional credit spreads. Most versatile strategy — works in any regime with the right direction.',
-        howItWorks:'Sell bull put spread when bullish/oversold, bear call spread when bearish/overbought. Defined risk, defined reward.',
-        entry:'RSI-based direction, 25-delta short strike, 30 DTE. IV Rank > 15. Min credit ≥20% of width.',
-        exit:'Close at 50% profit or 7 DTE. Stop at 2x credit received.',
-        idealConditions:'Trending market with clear directional bias. Elevated IV rank.',
-        allocation:15},
-
-    // --- TIER 2: Proven Mechanics (30% total) ---
-    earnings:{name:'Earnings Crusher',icon:'📊',desc:'Pre-earnings IV crush capture',badge:'g',
-        detail:'Sells premium before earnings for IV crush. Research: IV overestimates actual move ~80% of the time.',
-        howItWorks:'Sell premium 1-5 days before earnings when IV is inflated. IV crushes after the announcement regardless of direction.',
-        entry:'Earnings in 1-5 days. IV > 2x HV. Sell iron condors or strangles at 16-delta.',
-        exit:'Close morning after earnings announcement. Target: capture 50%+ of IV crush.',
-        idealConditions:'Earnings season. Stocks with history of IV overstatement. Large caps with liquid options.',
-        allocation:10},
-    jade_lizard:{name:'Jade Lizard',icon:'🦎',desc:'Short put + bear call spread. Zero upside risk.',badge:'g',
-        detail:'Collect premium from naked put + call spread. Mathematically eliminates upside risk when structured correctly.',
-        howItWorks:'Sell OTM put (25Δ) + sell OTM call spread (30Δ short, buy wing). Total credit designed to eliminate upside risk.',
-        entry:'Neutral to bullish. IV Rank > 30. 30-45 DTE. Credit ≥ call spread width for zero upside risk.',
-        exit:'Manage at 50% profit. Roll tested side if needed. Stop at 2x credit on put side.',
-        idealConditions:'Neutral to slightly bullish. High IV environment. Stock not overbought.',
-        allocation:10},
-    momentum:{name:'Momentum Vertical ❌',icon:'🚀',desc:'DISABLED: -$1.9K in backtest. Transaction costs eat profit.',badge:'r',
-        detail:'Dual-confirmation entries (RSI extreme + MACD crossover). Higher conviction than standard verticals.',
-        howItWorks:'Use RSI for oversold/overbought. Confirm with MACD crossover direction. Enter 30Δ vertical, 5-wide, 14-21 DTE.',
-        entry:'RSI < 30 + MACD bullish crossover → bull put spread. RSI > 70 + MACD bearish → bear call spread. 30-delta, $5 wide, 17 DTE.',
-        exit:'Close at 50% profit. Stop at 2x credit. Close at 7 DTE.',
-        idealConditions:'Trending market with RSI extremes. MACD confirmation required. Works in BULL or BEAR regimes.',
-        allocation:10},
-
-    // --- TIER 3: Conditional / Needs Validation (25% total) ---
-    zero_dte:{name:'0DTE Scalp',icon:'⏱️',desc:'Same-day SPX/SPY credit spreads',badge:'y',
-        detail:'High frequency, small profits. Research shows 0DTE ICs at 10Δ have ~80% win rate but need strict risk management.',
-        howItWorks:'Enter at 9:35 AM ET, sell 10Δ iron condor with $5 wings on SPX/SPY 0DTE. Close at 50% profit or 2x loss. Always close by 3:30 PM ET.',
-        entry:'Mon-Fri only. After 9:35 AM ET. Sell 10-delta IC on SPX/SPY. Skip FOMC/CPI days. Max 1% risk per trade.',
-        exit:'50% profit target, 2x credit stop loss, or hard close at 3:30 PM ET.',
-        idealConditions:'Low VIX day. No FOMC/CPI. After morning volatility settles. Range-bound intraday.',
-        allocation:5},
-    calendar:{name:'Calendar Spread ❌',icon:'📅',desc:'DISABLED: -$1.9K in backtest. Loses on volatile stocks.',badge:'r',
-        detail:'Profit from front-month faster theta decay vs back-month. Best when near-term IV is elevated.',
-        howItWorks:'Sell 30 DTE call, buy 60 DTE call at same ATM strike. Front month decays faster. Profit if stock stays near strike.',
-        entry:'IV Rank > 25. ATM strike. Near-term IV elevated. Liquid underlyings (SPY, QQQ, AAPL, MSFT).',
-        exit:'Close at 25% profit or when front month hits 7 DTE. Stop if stock moves >5% from strike.',
-        idealConditions:'Range-bound outlook. Elevated near-term IV. Low realized volatility expected.',
-        allocation:5},
-    pairs:{name:'Pairs Trading ❌',icon:'🔄',desc:'DISABLED: -$11.7K in backtest. No edge over random.',badge:'r',
-        detail:'Market-neutral strategy. Z-score mean reversion on correlated pairs. Academic research shows consistent alpha.',
-        howItWorks:'Calculate price ratio z-score between correlated pairs. When z > 2, short outperformer and long underperformer. Exit when z reverts to 0.',
-        entry:'Z-score > 2.0 (or < -2.0). 60-day lookback. Pairs: AMD/NVDA, GOOGL/META, JPM/V, AAPL/MSFT. Stock positions not options.',
-        exit:'Z-score returns to 0 (mean reversion). Stop if z > 3.5 (relationship broken). Max 20-day hold.',
-        idealConditions:'Market-neutral in any environment. Works best in range-bound or mean-reverting regimes.',
-        allocation:5},
-    earnings_buy:{name:'Earnings Straddle Buy ❌',icon:'🎯',desc:'DISABLED: -$32K in backtest. Loses after costs.',badge:'r',
-        detail:'Opposite of earnings crush — buy vol when actual moves historically exceed implied. Needs careful stock selection.',
-        howItWorks:'Identify stocks where actual earnings move > implied move historically. Buy ATM straddle before announcement. Close immediately after.',
-        entry:'1-3 days before earnings. Historical beat rate > 60%. Historical avg move > current implied move.',
-        exit:'Close immediately after earnings announcement. Do not hold through IV crush — the move must overcome it.',
-        idealConditions:'Earnings season. Stocks with history of big surprises (TSLA, NFLX, COIN). Edge in move size.',
-        allocation:3},
-    gamma_scalp:{name:'Gamma Scalp ❌',icon:'⚡',desc:'DISABLED: -$413K in backtest. Catastrophic losses.',badge:'r',
-        detail:'Buy ATM straddles on high-IV stocks and delta-hedge. Only activates in HIGH_VOL or CRISIS regime.',
-        howItWorks:'Buy ATM straddles and continuously delta-hedge the position. Profits from large moves in either direction via gamma. Each hedge mechanically buys low / sells high.',
-        entry:'Regime = HIGH_VOL or CRISIS. Buy ATM straddles on high-beta stocks (TSLA, NVDA, COIN). Hedge when delta > ±0.30.',
-        exit:'Close after 5-10 days or when VIX normalizes. Target: scalping profits exceed theta decay.',
-        idealConditions:'High volatility regime. Crisis or sharp sell-off. Realized vol > implied vol.',
-        allocation:2},
-    bwb:{name:'Broken Wing Butterfly',icon:'🦋',desc:'Directional credit spread',badge:'y',
-        detail:'Asymmetric butterfly for directional bias with credit. Complex structure — needs validation.',
-        howItWorks:'Skewed butterfly where one wing is wider, creating a directional bias. Entered for a credit so worst case is small loss.',
-        entry:'Directional bias from regime engine. 30-45 DTE. Place at expected move boundary.',
-        exit:'Close at 50% profit or 14 DTE. Stop if underlying moves through the body strike.',
-        idealConditions:'Clear directional bias. Moderate IV. Trending market.',
-        allocation:3},
-    dividend:{name:'Dividend Capture',icon:'💰',desc:'CSP before ex-div, capture premium + dividend',badge:'g',
-        detail:'Seasonal strategy — only triggers near ex-dividend dates. Collect premium + potential dividend.',
-        howItWorks:'Sell put at higher delta (40Δ) hoping for assignment before ex-div. If assigned, collect dividend. If not, keep premium.',
-        entry:'7-21 days before ex-div. High-dividend stocks (JPM, V, AAPL, MSFT, UNH). 40-delta put. Collateral < 15% equity.',
-        exit:'Hold through ex-div if assigned. If not assigned, keep premium. Close CSP at 50% profit pre-expiry.',
-        idealConditions:'Bullish or neutral market. Ex-dividend approaching. Stocks you want to own.',
-        allocation:2},
+    iron_condor:{name:'Iron Condor',icon:'🦅',desc:'45 DTE, 12Δ, Tastytrade rules. IWM/DIA.',badge:'g',detail:'Sells OTM puts+calls with wings. Best on range-bound ETFs.'},
+    wheel:{name:'The Wheel',icon:'🎡',desc:'CSP → CC cycle, 30 DTE, large caps',badge:'g',detail:'Cash-secured puts, covered calls when assigned. Our #1 strategy.'},
+    earnings:{name:'Earnings Crusher',icon:'📊',desc:'Pre-earnings IV crush capture',badge:'g',detail:'Sells strangles/ICs before earnings for IV crush.'},
+    bwb:{name:'Broken Wing Butterfly',icon:'🦋',desc:'Directional credit spread',badge:'y',detail:'Asymmetric butterfly for directional bias with credit.'},
+    gamma_scalp:{name:'Gamma Scalp',icon:'⚡',desc:'Long gamma + delta hedge',badge:'y',detail:'Buy straddles, hedge delta. High vol regime.'},
+    zero_dte:{name:'0DTE',icon:'⏱️',desc:'Intraday premium selling',badge:'y',detail:'Same-day expiry. SPX/SPY only.'},
 };
-let _stratData={};
 async function loadStrats(){
     try{
-        const strats=await api('/api/strategies');_stratData=strats;
-        const positions=await api('/api/positions');
-        // Count open trades per strategy — group by underlying+expiry first
-        const stratOpenTrades={};
-        const _groups={};
-        (positions||[]).forEach(p=>{
-            const sym=p.symbol||'';
-            const m=sym.match(/^([A-Z]+)(\d{6})([PC])/);
-            if(!m)return;
-            const key=m[1]+'_'+m[2];
-            if(!_groups[key])_groups[key]={puts:[],calls:[],shortPuts:0,shortCalls:0,longPuts:0,longCalls:0};
-            const g=_groups[key];const isShort=parseInt(p.qty)<0;
-            if(m[3]==='P'){g.puts.push(p);if(isShort)g.shortPuts++;else g.longPuts++}
-            else{g.calls.push(p);if(isShort)g.shortCalls++;else g.longCalls++}
-        });
-        Object.values(_groups).forEach(g=>{
-            let strat='wheel';
-            if(g.shortPuts===1&&g.longPuts===1&&g.shortCalls===1&&g.longCalls===1)strat='iron_condor';
-            else if(g.shortPuts===1&&g.longPuts===1&&g.calls.length===0)strat='vertical';
-            else if(g.shortCalls===1&&g.longCalls===1&&g.puts.length===0)strat='vertical';
-            else if(g.shortPuts===1&&g.shortCalls===1&&g.puts.length===1&&g.calls.length===1)strat='earnings';
-            else if(g.shortPuts===1&&g.longPuts===0&&g.calls.length===0)strat='wheel';
-            else if(g.shortCalls===1&&g.longCalls===0&&g.puts.length===0)strat='wheel';
-            stratOpenTrades[strat]=(stratOpenTrades[strat]||0)+1;
-        });
-        const grid=document.getElementById('strat-grid');let h='';
+        const strats=await api('/api/strategies');const grid=document.getElementById('strat-grid');let h='';
         Object.entries(strats).forEach(([k,v])=>{
-            const i=STRAT_MAP[k]||{name:k,icon:'📊',desc:'',badge:'y',allocation:0};
-            const wins=v.wins||0,losses=v.losses||0,total=v.total_trades||0;
-            const winRate=total>0?((wins/total)*100).toFixed(0):'--';
-            const pnl=v.total_pnl||0;
-            const openCount=stratOpenTrades[k]||0;
-            h+=`<div class="strat ${v.enabled?'on':''}" onclick="showStratDetail('${k}')" style="position:relative">
+            const i=STRAT_MAP[k]||{name:k,icon:'📊',desc:'',badge:'y'};
+            h+=`<div class="strat ${v.enabled?'on':''}" onclick="showStratDetail('${k}')">
                 <div class="strat-icon">${i.icon}</div>
                 <div class="strat-body"><div class="strat-name">${i.name}</div><div class="strat-desc">${i.desc}</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px;font-size:10px">
-                    <div><span style="color:var(--dim)">Alloc:</span> <b>${i.allocation||0}%</b></div>
-                    <div><span style="color:var(--dim)">Open:</span> <b>${openCount}</b></div>
-                    <div><span style="color:var(--dim)">Total:</span> <b>${total}</b></div>
-                    <div><span style="color:var(--dim)">Win%:</span> <b style="color:${winRate!='--'&&winRate>=50?'var(--green)':'var(--text)'}">${winRate}%</b></div>
-                    <div><span style="color:var(--dim)">P&L:</span> <b class="${pnl>=0?'pos':'neg'}">${fmt(pnl)}</b></div>
-                    <div><span style="color:var(--dim)">W/L:</span> <b>${wins}/${losses}</b></div>
-                </div>
-                <div class="strat-meta"><span class="badge badge-${i.badge}">${i.badge==='g'?'APPROVED':i.badge==='r'?'REJECTED':'PENDING'}</span></div></div>
+                <div class="strat-meta"><span class="badge badge-${i.badge}">${i.badge==='g'?'APPROVED':i.badge==='r'?'REJECTED':'PENDING'}</span>
+                <span style="color:var(--dim);font-size:10px">Trades: ${v.total_trades}</span></div></div>
                 <label class="sw" onclick="event.stopPropagation()"><input type="checkbox" ${v.enabled?'checked':''} onchange="toggleStrat('${k}',this.checked)"><span class="sw-s"></span></label>
             </div>`;
         });grid.innerHTML=h;
-    }catch(e){console.error('loadStrats:',e)}
+    }catch(e){}
 }
-function showStratDetail(k){const i=STRAT_MAP[k];if(!i)return;const v=_stratData[k]||{};
-    const wins=v.wins||0,losses=v.losses||0,total=v.total_trades||0;
-    const winRate=total>0?((wins/total)*100).toFixed(1):'--';
-    const pnl=v.total_pnl||0;
-    document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:16px;align-items:flex-start">
-    <div class="strat-icon" style="width:56px;height:56px;font-size:28px;flex-shrink:0">${i.icon}</div>
-    <div style="flex:1">
-        <div style="font-weight:700;color:var(--accent);font-family:Orbitron;font-size:16px;margin-bottom:8px">${i.name}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;font-size:11px">
-            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
-                <div style="color:var(--dim);font-size:9px">ALLOCATION</div><div style="font-weight:700;color:var(--accent)">${i.allocation||0}%</div></div>
-            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
-                <div style="color:var(--dim);font-size:9px">WIN RATE</div><div style="font-weight:700;color:${winRate!='--'&&parseFloat(winRate)>=50?'var(--green)':'var(--red)'}">${winRate}%</div></div>
-            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
-                <div style="color:var(--dim);font-size:9px">TOTAL P&L</div><div style="font-weight:700" class="${pnl>=0?'pos':'neg'}">${fmt(pnl)}</div></div>
-            <div style="background:var(--bg);padding:6px 8px;border-radius:3px;text-align:center">
-                <div style="color:var(--dim);font-size:9px">TRADES</div><div style="font-weight:700">${total} (${wins}W/${losses}L)</div></div>
-        </div>
-        <div style="font-size:12px;line-height:1.7">
-            <div style="margin-bottom:6px"><b style="color:var(--cyan)">⚙️ How It Works:</b> ${i.howItWorks||i.detail||''}</div>
-            <div style="margin-bottom:6px"><b style="color:var(--green)">📥 Entry Criteria:</b> ${i.entry||'--'}</div>
-            <div style="margin-bottom:6px"><b style="color:var(--red)">📤 Exit Criteria:</b> ${i.exit||'--'}</div>
-            <div><b style="color:var(--yellow)">🎯 Ideal Conditions:</b> ${i.idealConditions||'--'}</div>
-        </div>
-    </div></div>`;
-}
-
-// ═══ PERFORMANCE ═══
-async function loadPerformance(){
-    try{
-        const [strats, eqHist, orders] = await Promise.all([
-            api('/api/strategies'),
-            api('/api/equity-history').catch(()=>[]),
-            api('/api/orders').catch(()=>[])
-        ]);
-        // Aggregate from strategies data
-        let totalPnl=0, totalWins=0, totalLosses=0, totalTrades=0;
-        const stratRows=[];
-        Object.entries(strats||{}).forEach(([k,v])=>{
-            const i=STRAT_MAP[k]||{name:k,icon:'📊'};
-            const w=v.wins||0, l=v.losses||0, t=v.total_trades||0;
-            const pnl=v.total_pnl||0;
-            totalPnl+=pnl; totalWins+=w; totalLosses+=l; totalTrades+=t;
-            const wr=t>0?((w/t)*100).toFixed(1):'--';
-            const avg=t>0?(pnl/t).toFixed(2):'--';
-            stratRows.push({name:i.name,icon:i.icon,t,w,l,wr,pnl,avg});
-        });
-        // Summary cards
-        document.getElementById('perf-ret').textContent=fmt(totalPnl);
-        document.getElementById('perf-ret').className='card-v '+(totalPnl>=0?'pos':'neg');
-        document.getElementById('perf-winloss').textContent=`${totalWins}W / ${totalLosses}L`;
-        const winRate=totalTrades>0?((totalWins/totalTrades)*100).toFixed(1)+'%':'--';
-        document.getElementById('perf-wr').textContent=winRate;
-        document.getElementById('perf-wr').className='card-v '+(totalTrades>0&&totalWins/totalTrades>=0.5?'pos':'neg');
-
-        // Avg duration from orders (heuristic: time between first and last fill)
-        const filledOrders=(orders||[]).filter(o=>o.status==='filled'&&o.filled_at);
-        if(filledOrders.length>=2){
-            const dates=filledOrders.map(o=>new Date(o.filled_at).getTime()).sort();
-            const avgMs=(dates[dates.length-1]-dates[0])/Math.max(filledOrders.length-1,1);
-            const avgDays=Math.round(avgMs/86400000);
-            document.getElementById('perf-dur').textContent=avgDays>0?avgDays+'d':'<1d';
-        }else{
-            document.getElementById('perf-dur').textContent='--';
-        }
-
-        // Best/worst trade from orders with P&L
-        let bestTrade=null,worstTrade=null;
-        (orders||[]).forEach(o=>{
-            if(o.status!=='filled')return;
-            const pnl=parseFloat(o.realized_pl||o.pnl||0);
-            if(pnl===0)return;
-            const sym=o.symbol||'';
-            const underlying=sym.length>10?(sym.match(/^[A-Z]+/)?.[0]||sym):sym;
-            if(!bestTrade||pnl>bestTrade.pnl)bestTrade={sym:underlying,pnl};
-            if(!worstTrade||pnl<worstTrade.pnl)worstTrade={sym:underlying,pnl};
-        });
-        document.getElementById('perf-best').textContent=bestTrade?`${bestTrade.sym}: ${fmt(bestTrade.pnl)}`:'No closed trades yet';
-        document.getElementById('perf-worst').textContent=worstTrade?`${worstTrade.sym}: ${fmt(worstTrade.pnl)}`:'No closed trades yet';
-
-        // Strategy breakdown table
-        let sh='';
-        stratRows.forEach(r=>{
-            sh+=`<tr><td style="font-weight:700">${r.icon} ${r.name}</td><td>${r.t}</td><td class="pos">${r.w}</td><td class="neg">${r.l}</td>
-                <td style="color:${r.wr!='--'&&parseFloat(r.wr)>=50?'var(--green)':'var(--text)'}">${r.wr}%</td>
-                <td class="${r.pnl>=0?'pos':'neg'}">${fmt(r.pnl)}</td>
-                <td>${r.avg!='--'?fmt(parseFloat(r.avg)):'--'}</td></tr>`;
-        });
-        document.getElementById('perf-strat-body').innerHTML=sh||'<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:20px">No strategy data</td></tr>';
-
-        // Mini equity chart in performance tab
-        if(eqHist&&eqHist.length&&typeof LightweightCharts!=='undefined'){
-            const c=document.getElementById('perf-eq-chart');
-            if(c&&c.clientWidth>0){
-                c.innerHTML='';
-                const chart=LightweightCharts.createChart(c,{width:c.clientWidth,height:250,
-                    layout:{background:{color:'#0a0e17'},textColor:'#8899aa'},
-                    grid:{vertLines:{color:'#1a1a2e'},horzLines:{color:'#1a1a2e'}},
-                    rightPriceScale:{borderColor:'#2a2a3a'},timeScale:{borderColor:'#2a2a3a'}});
-                const series=chart.addAreaSeries({topColor:'rgba(0,200,83,.2)',bottomColor:'rgba(0,200,83,.01)',lineColor:'#00c853',lineWidth:2});
-                series.setData(eqHist.map(h=>({time:h.time,value:h.equity})));
-                new ResizeObserver(()=>chart.applyOptions({width:c.clientWidth})).observe(c);
-            }
-        }
-    }catch(e){console.error('loadPerformance:',e)}
+function showStratDetail(k){const i=STRAT_MAP[k];if(!i)return;
+    document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:12px;align-items:center">
+    <div class="strat-icon" style="width:48px;height:48px;font-size:24px">${i.icon}</div>
+    <div><div style="font-weight:700;color:var(--accent);font-family:Orbitron">${i.name}</div>
+    <div style="margin-top:4px">${i.detail||''}</div></div></div>`;
 }
 
 // ═══ SCANNER ═══
@@ -1006,15 +695,6 @@ async function runScan(){
             <td style="font-weight:700;color:${x.score>70?'var(--green)':'var(--text)'}">${x.score.toFixed(0)}</td></tr>`});
         document.getElementById('scan-body').innerHTML=h;
         addLog(`Scan complete: ${r.length} symbols analyzed`,'trade');
-        // Trigger trade execution via Firebase command
-        if(_fbDb){
-            await _fbDb.ref('trading/commands/scan_execute').set({
-                trigger: true,
-                timestamp: new Date().toISOString(),
-                source: 'dashboard'
-            });
-            addLog('🚀 Trade execution triggered — bot will pick up signals','trade');
-        }
     }catch(e){addLog('Scan failed: '+e.message,'error')}
 }
 
@@ -1079,9 +759,7 @@ function chartLink(symbol){
     const underlying=symbol.length>10?(symbol.match(/^[A-Z]+/)?.[0]||symbol):symbol;
     const url=chartIndex[underlying];
     if(!url)return '';
-    // Ensure correct base path for GitHub Pages
-    const fullUrl=url.startsWith('http')?url:url.startsWith('/sambot-trading/')?url:'/sambot-trading/charts/'+url.replace(/^\/?(charts\/)?/,'');
-    return ` <a href="${fullUrl}" target="_blank" title="Trade analysis: ${underlying}" style="text-decoration:none;font-size:11px">📸</a>`;
+    return ` <a href="${url}" target="_blank" title="Trade analysis: ${underlying}" style="text-decoration:none;font-size:11px">📸</a>`;
 }
 
 async function loadOrders(){
@@ -1147,45 +825,24 @@ async function loadOrders(){
                     <td>multi</td><td>${o.qty||1}x4</td><td>${o.type||''}</td><td>${price}</td>
                     <td>${o.filled_qty||'0'}/${o.qty||''}</td><td class="${sc}">${o.status||''}</td></tr>`;
                 
-                // Trade explanation row — dynamic by strategy
-                let setupDesc='',targetDesc='',thesisDesc='';
-                const stopAt2x=`<span class="neg">Stop:</span> Close if loss &gt; 2x credit ($${(credit*2).toFixed(2)})`;
-                const closeRule=`<span style="color:var(--dim)">Close at:</span> <b>50% profit ($${profitTarget50.toFixed(2)} debit)</b> or 7 DTE`;
-                
-                if(strategy==='🦅 IRON CONDOR'){
-                    setupDesc=`<span style="color:var(--dim)">Sell</span> <b>$${spStrike}P/$${scStrike}C</b> · <span style="color:var(--dim)">Buy</span> <b>$${bpStrike}P/$${bcStrike}C</b> wings`;
-                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (stays $${spStrike}–$${scStrike})<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br>${closeRule}`;
-                    thesisDesc=`${underlying} stays range-bound. Collect theta. ${stopAt2x}`;
-                }else if(strategy==='PUT SPREAD'){
-                    const breakeven=spStrike-credit;
-                    setupDesc=`<b>Bull Put Spread</b>: Sell $${spStrike}P / Buy $${bpStrike}P`;
-                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (stays above $${spStrike})<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br><span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}<br>${closeRule}`;
-                    thesisDesc=`Bullish on ${underlying}. Price stays above $${spStrike}. Collect theta. ${stopAt2x}`;
-                }else if(strategy==='CALL SPREAD'){
-                    const breakeven=scStrike+credit;
-                    setupDesc=`<b>Bear Call Spread</b>: Sell $${scStrike}C / Buy $${bcStrike}C`;
-                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (stays below $${scStrike})<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br><span style="color:var(--dim)">Breakeven:</span> $${breakeven.toFixed(2)}<br>${closeRule}`;
-                    thesisDesc=`Bearish on ${underlying}. Price stays below $${scStrike}. Collect theta. ${stopAt2x}`;
-                }else{
-                    setupDesc=legs.map(l=>`${l.side==='sell'?'Sell':'Buy'} ${l.symbol?.slice(-8)||''}`).join(' · ');
-                    targetDesc=`<span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)}<br><span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)}<br>${closeRule}`;
-                    thesisDesc=`Premium collection strategy. ${stopAt2x}`;
-                }
-                
+                // Trade explanation row
                 h+=`<tr style="background:rgba(255,140,0,0.03)"><td colspan="8" style="padding:8px 12px;font-size:11px;line-height:1.6;color:var(--text)">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                         <div>
                             <b style="color:#ff8c00">📋 Trade Setup</b><br>
-                            ${setupDesc}<br>
+                            <span style="color:var(--dim)">Sell</span> ${underlying} <b>$${spStrike}/$${scStrike}</b> put/call spread<br>
+                            <span style="color:var(--dim)">Buy</span> ${underlying} <b>$${bpStrike}/$${bcStrike}</b> wings (protection)<br>
                             <span style="color:var(--dim)">Exp:</span> ${expStr} | <span style="color:var(--dim)">Credit:</span> <span class="pos">$${credit.toFixed(2)}</span>
                         </div>
                         <div>
                             <b style="color:#ff8c00">🎯 Targets</b><br>
-                            ${targetDesc}
+                            <span class="pos">Max Profit:</span> $${maxProfit.toFixed(0)} (${underlying} stays between $${spStrike}-$${scStrike})<br>
+                            <span class="neg">Max Loss:</span> $${maxLoss.toFixed(0)} (breach either wing)<br>
+                            <span style="color:var(--dim)">Close at:</span> <b>50% profit ($${profitTarget50.toFixed(2)} debit)</b> or 7 DTE
                         </div>
                     </div>
                     <div style="margin-top:6px;color:var(--dim);font-size:10px">
-                        <b>Thesis:</b> ${thesisDesc}
+                        <b>Thesis:</b> ${underlying} stays range-bound. Collect premium from time decay (theta). Close at 50% profit or before expiry.
                     </div>
                 </td></tr>`;
                 
@@ -1349,113 +1006,14 @@ function updateEquityChart(equity){
     }
 }
 
-// ═══ JOURNAL ═══
-async function loadJournal(){
-    try{
-        const orders=await api('/api/orders');
-        const positions=await api('/api/positions');
-        const body=document.getElementById('j-body');
-        if(!orders||!orders.length||orders.error){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No trades yet</td></tr>';return}
-        
-        // Build live P&L lookup from positions, grouped by underlying
-        const livePL={};
-        (positions||[]).forEach(p=>{
-            const sym=p.symbol||'';const m=sym.match(/^([A-Z]+)/);
-            const und=m?m[1]:sym;
-            if(!livePL[und])livePL[und]={pnl:0,pnlPct:0,mv:0,cost:0};
-            livePL[und].pnl+=parseFloat(p.unrealized_pl||0);
-            livePL[und].mv+=parseFloat(p.market_value||0);
-            livePL[und].cost+=parseFloat(p.cost_basis||0);
-        });
-        Object.values(livePL).forEach(v=>{v.pnlPct=v.cost!==0?(v.pnl/Math.abs(v.cost)*100):0});
-        
-        const filled=orders.filter(o=>o.status==='filled'||o.status==='partially_filled');
-        if(!filled.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled trades yet</td></tr>';return}
-        let h='';
-        for(const o of filled.slice(0,100)){
-            const dt=new Date(o.filled_at||o.created_at);
-            const dateStr=dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'2-digit'});
-            const timeStr=dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true});
-            const sym=o.symbol||'';
-            const legs=o.legs||[];
-            const isMleg=o.order_class==='mleg'&&legs.length>0;
-            const underlying=sym.length>10?(sym.match(/^[A-Z]+/)?.[0]||sym):(isMleg&&legs.length?(legs[0].symbol||'').match(/^[A-Z]+/)?.[0]||'?':sym);
-            
-            let strat='STOCK';
-            if(isMleg){
-                const puts=legs.filter(l=>(l.symbol||'').includes('P'));
-                const calls=legs.filter(l=>(l.symbol||'').includes('C'));
-                if(puts.length===2&&calls.length===2)strat='🦅 Iron Condor';
-                else if(puts.length===2)strat='Put Spread';
-                else if(calls.length===2)strat='Call Spread';
-                else strat='Multi-Leg';
-            }else if(sym.length>10){
-                const isP=sym.includes('P'),isC=sym.includes('C');
-                if(o.side==='sell'&&isP)strat='🎡 Wheel (CSP)';
-                else if(o.side==='sell'&&isC)strat='🎡 Wheel (CC)';
-                else if(o.side==='buy'&&isP)strat='Long Put';
-                else if(o.side==='buy'&&isC)strat='Long Call';
-                else strat='Option';
-            }
-            
-            const entryPrice=o.filled_avg_price?fmt(parseFloat(o.filled_avg_price)):'—';
-            
-            // Live P&L from positions
-            const lp=livePL[underlying];
-            let pnlStr='—',pnlCls='';
-            if(lp){
-                pnlStr=`${fmt(lp.pnl)} <span style="font-size:10px;opacity:0.7">(${lp.pnlPct>=0?'+':''}${lp.pnlPct.toFixed(1)}%)</span>`;
-                pnlCls=lp.pnl>0?'pos':lp.pnl<0?'neg':'';
-            }else{
-                // Position closed — check realized
-                const rpl=parseFloat(o.realized_pl||0);
-                if(rpl!==0){pnlStr=fmt(rpl);pnlCls=rpl>0?'pos':'neg';}
-            }
-            
-            const sc=o.status==='filled'?'pos':'neu';
-            
-            let reason=o.side==='sell'?'Premium collection':'Directional';
-            if(strat.includes('Condor'))reason='Range-bound premium';
-            if(strat.includes('Wheel'))reason=o.side==='sell'?(sym.includes('P')?'Bullish premium / want shares':'Covered call income'):'Assignment';
-            if(strat.includes('Spread'))reason='Directional credit';
-            
-            h+=`<tr>
-                <td>${dateStr}<br><span style="color:var(--dim);font-size:10px">${timeStr}</span></td>
-                <td style="color:#ff8c00;font-size:11px">${strat}</td>
-                <td style="cursor:pointer;color:var(--cyan);text-decoration:underline" onclick="loadStockChart('${underlying}')">${underlying} ${chartLink(underlying)}</td>
-                <td>${entryPrice}</td>
-                <td class="${sc}">${o.status}</td>
-                <td class="${pnlCls}">${pnlStr}</td>
-                <td style="color:var(--dim);font-size:11px">${reason}</td>
-            </tr>`;
-        }
-        body.innerHTML=h;
-    }catch(e){console.error('loadJournal:',e);document.getElementById('j-body').innerHTML='<tr><td colspan="7" style="text-align:center;color:#ff3b5c;padding:28px">Error loading journal</td></tr>'}
-}
-
 // ═══ INIT ═══
 addLog('SamBot Trading Terminal initialized','system');
-refreshAll().then(()=>{addLog('Connected to Alpaca ✅','trade');addLog('6 strategies loaded','info')});
-loadChartIndex().then(()=>{loadOrders();loadJournal()});loadStrats();loadPerformance();loadBT();setTimeout(initChart,500);
+refreshAll().then(()=>{addLog('Connected to Alpaca ✅','trade');addLog('5 strategies active (Wheel, 0DTE, Dividend, Jade Lizard, BWB) | 8 disabled','info')});
+loadChartIndex().then(()=>{loadOrders()});loadStrats();loadBT();setTimeout(initChart,500);
 // Load scan log immediately then every 15s
 setTimeout(()=>{lastScanLogLen=0;loadScanLog()},2000);
 setTimeout(detectRegime,4000);
-setInterval(refreshAll,30000); // Full refresh every 30s
-// Fast live data refresh every 5s from Firebase
-if(_fbDb){
-    _fbDb.ref('trading/live').on('value',snap=>{
-        const d=snap.val();if(!d)return;
-        const eq=d.equity,pnl=eq-100000;
-        document.getElementById('equity').textContent=fmt(eq);document.getElementById('equity').className='card-v '+cls(pnl);
-        document.getElementById('eq-sub').innerHTML=`Init: ${fmt(100000)} | <span class="${cls(pnl)}">${fmtPct(pnl/1000)}</span>`;
-        document.getElementById('bp').textContent=fmt(d.buying_power);
-        document.getElementById('bp-sub').textContent=`${(d.buying_power/eq*100).toFixed(0)}% available`;
-        document.getElementById('daily-pnl').textContent=fmt(pnl);document.getElementById('daily-pnl').className='card-v '+cls(pnl);
-        document.getElementById('perf-open').textContent=d.positions||0;
-        document.getElementById('perf-cash').textContent=fmtK(d.cash);
-        document.getElementById('perf-bp').textContent=fmtK(d.buying_power);
-    });
-}setInterval(loadScanLog,15000);setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}),1000);
+setInterval(refreshAll,15000);setInterval(loadScanLog,15000);setInterval(()=>document.getElementById('clock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}),1000);
 setInterval(detectRegime,300000);
 </script>
 </body>
