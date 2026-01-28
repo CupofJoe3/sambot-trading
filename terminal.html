@@ -454,6 +454,8 @@ const FB_PATH_MAP={
     '/api/iv-scan':'trading/iv_scan',
     '/api/charts':'trading/charts',
     '/api/scan-log':'trading/activity',
+    '/api/underlying-prices':'trading/underlying_prices',
+    '/api/chains':'trading/chains',
 };
 
 // Convert Firebase positions dict → Alpaca-style array
@@ -595,11 +597,25 @@ async function refreshAll(){
             document.getElementById('ptab-cash').textContent=fmtK(cash);
             document.getElementById('ptab-bp').textContent=fmtK(bp);
         }catch(e){}
-        const dd=status.risk.drawdown;
-        document.getElementById('risk-level').textContent=status.risk.alert_level;
-        document.getElementById('dd-sub').textContent=`DD: ${dd.toFixed(2)}% | Scale: ${(status.risk.position_scale*100).toFixed(0)}%`;
+        const dd=status.risk?.drawdown||0;
+        const posScale=status.risk?.position_scale||1;
+        // Enhanced risk calculation: drawdown + unrealized loss + position count + buying power usage
+        const unrealPL=positions.reduce((s,p)=>s+parseFloat(p.unrealized_pl||0),0);
+        const unrealPct=status.account?.equity?unrealPL/parseFloat(status.account.equity)*100:0;
+        const bpUsed=status.account?.buying_power?100-parseFloat(status.account.buying_power)/parseFloat(status.account.equity)*100:0;
+        // Composite risk score: weighted sum
+        const riskScore=Math.abs(dd)*2+Math.abs(Math.min(0,unrealPct))*1.5+Math.max(0,bpUsed-50)*0.5+positions.length*2;
+        let riskLevel='🟢 GREEN',riskColor='var(--green)';
+        if(riskScore>=40){riskLevel='🔴 RED';riskColor='var(--red)'}
+        else if(riskScore>=25){riskLevel='🟠 ORANGE';riskColor='#ff8c00'}
+        else if(riskScore>=12){riskLevel='🟡 YELLOW';riskColor='#ffd600'}
+        const riskEl=document.getElementById('risk-level');
+        riskEl.textContent=riskLevel;
+        riskEl.style.color=riskColor;
+        const ddSub=document.getElementById('dd-sub');
+        ddSub.textContent=`DD: ${dd.toFixed(2)}% | Scale: ${(posScale*100).toFixed(0)}% | Unreal: ${unrealPct.toFixed(1)}% | Score: ${riskScore.toFixed(0)}`;
         const lv=[5,10,15,20,25],cc=['g','y','o','r','r'];
-        for(let i=1;i<=5;i++)document.getElementById('r'+i).className='risk-bar'+(dd>=lv[i-1]?' '+cc[i-1]:'');
+        for(let i=1;i<=5;i++)document.getElementById('r'+i).className='risk-bar'+(riskScore>=lv[i-1]*2?' '+cc[i-1]:'');
         document.getElementById('master-sw').checked=status.master_switch;
         document.getElementById('master-box').className='master'+(status.master_switch?' on':'');
         // Market analysis
@@ -651,6 +667,77 @@ async function closePosition(symbol){
     }catch(e){addLog(`❌ Close error: ${e.message}`,'error');alert('Close error: '+e.message)}
 }
 
+// ═══ PROBABILITY OF PROFIT ═══
+// Normal CDF approximation (Abramowitz & Stegun)
+function normCDF(x){
+    if(x<-8)return 0;if(x>8)return 1;
+    const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+    const sign=x<0?-1:1;
+    x=Math.abs(x)/Math.SQRT2;
+    const t=1/(1+p*x);
+    const y=1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+    return 0.5*(1+sign*y);
+}
+
+// Calculate probability of profit for a position group
+// Uses Black-Scholes-style probability: P(stock > strike at expiry)
+// Assumes ~25% annualized vol for ETFs, ~35% for individual stocks
+function calcProbProfit(group, currentPrice){
+    if(!group||!group.legs.length||!currentPrice)return null;
+    const dte=group.dte||30;
+    const T=dte/365;
+    if(T<=0)return null;
+    const underlying=group.underlying||'';
+    // ETFs get lower vol estimate
+    const etfs=['SPY','QQQ','IWM','DIA','XLF','XLE','XLK','XLV','GLD','TLT'];
+    const vol=etfs.includes(underlying)?0.18:0.32;
+    const sqrtT=Math.sqrt(T);
+    
+    const puts=group.legs.filter(l=>l.pc==='P');
+    const calls=group.legs.filter(l=>l.pc==='C');
+    const shortPuts=puts.filter(l=>parseInt(l.qty)<0);
+    const longPuts=puts.filter(l=>parseInt(l.qty)>0);
+    const shortCalls=calls.filter(l=>parseInt(l.qty)<0);
+    const longCalls=calls.filter(l=>parseInt(l.qty)>0);
+    
+    // P(stock > K) = N(d2) where d2 = (ln(S/K) + (r - σ²/2)T) / (σ√T)
+    function pAbove(K){
+        if(!K||K<=0)return 0.5;
+        const d2=(Math.log(currentPrice/K)+(0.04-vol*vol/2)*T)/(vol*sqrtT);
+        return normCDF(d2);
+    }
+    function pBelow(K){return 1-pAbove(K)}
+    
+    const credit=Math.abs(group.legs.reduce((s,l)=>s+parseFloat(l.cost_basis||0),0))/100;
+    
+    // Iron Condor: profit if stock stays between short put and short call
+    if(shortPuts.length===1&&longPuts.length===1&&shortCalls.length===1&&longCalls.length===1){
+        const sp=shortPuts[0].strike, sc=shortCalls[0].strike;
+        // P(sp < S < sc) = P(S > sp) - P(S > sc)
+        return Math.max(0,Math.min(100,(pAbove(sp)-pAbove(sc))*100));
+    }
+    // Bull put spread: profit if stock stays above short put strike (actually breakeven = short - credit)
+    if(shortPuts.length===1&&longPuts.length===1&&!calls.length){
+        const breakeven=shortPuts[0].strike-credit;
+        return Math.max(0,Math.min(100,pAbove(breakeven)*100));
+    }
+    // Bear call spread: profit if stock stays below short call + credit
+    if(shortCalls.length===1&&longCalls.length===1&&!puts.length){
+        const breakeven=shortCalls[0].strike+credit;
+        return Math.max(0,Math.min(100,pBelow(breakeven)*100));
+    }
+    // CSP: profit if above strike - premium
+    if(shortPuts.length===1&&!calls.length&&!longPuts.length){
+        const breakeven=shortPuts[0].strike-credit;
+        return Math.max(0,Math.min(100,pAbove(breakeven)*100));
+    }
+    // Covered call: profit unless stock drops below entry - premium (always high)
+    if(shortCalls.length===1&&!puts.length&&!longCalls.length){
+        return Math.max(0,Math.min(100,pAbove(shortCalls[0].strike-credit)*100));
+    }
+    return null;
+}
+
 function parseOptionSym(sym){
     if(sym.length<=10)return null;
     const m=sym.match(/^([A-Z]+)(\d{6})([PC])(\d{8})$/);
@@ -661,6 +748,15 @@ function parseOptionSym(sym){
     const expShort=`${expRaw.slice(2,4)}/${expRaw.slice(4,6)}`;
     return {underlying:und,exp,expShort,type:pc==='P'?'Put':'Call',strike,pc};
 }
+let _underlyingPrices={};
+async function fetchUnderlyingPrices(){
+    try{
+        const p=await api('/api/underlying-prices');
+        if(p&&!p.error)_underlyingPrices=p;
+    }catch(e){}
+}
+fetchUnderlyingPrices();
+
 function renderPos(pos,id,pct=false){
     const tb=document.getElementById(id);
     const cols=pct?10:9;
@@ -774,13 +870,23 @@ function renderPos(pos,id,pct=false){
             desc=g.legs.map(l=>`${parseInt(l.qty)<0?'Short':'Long'} $${l.strike} ${l.type}`).join(' · ')+` — Exp ${g.expShort}`;
         }
         
+        // Calculate probability of profit
+        const curPrice=_underlyingPrices[g.underlying]||0;
+        const prob=calcProbProfit(g, curPrice);
+        const probHTML=prob!==null?`<div style="margin-top:6px;padding:4px 8px;background:rgba(0,229,255,0.08);border-radius:3px;display:inline-block">
+            <span style="color:var(--cyan);font-weight:700;font-size:13px">🎯 ${prob.toFixed(1)}%</span>
+            <span style="color:var(--dim);font-size:10px"> prob of profit</span>
+            ${curPrice?`<span style="color:var(--dim);font-size:10px"> · ${g.underlying} @ $${curPrice}</span>`:''}
+        </div>`:'';
+        
         // Group header row
         h+=`<tr style="background:rgba(255,140,0,0.06);border-left:3px solid ${color}">
             <td style="cursor:pointer;color:var(--cyan);text-decoration:underline" onclick="loadStockChart('${g.underlying}')">
                 <span style="color:${color};font-weight:700">${icon} ${strategy}</span><br>
                 <span style="font-size:14px;font-weight:700">${g.underlying}</span> ${chartLink(g.underlying)}
+                <br><button onclick="event.stopPropagation();showChain('${g.underlying}','${g.exp}')" style="margin-top:4px;padding:2px 8px;font-size:9px;background:#1a2233;border:1px solid var(--cyan);color:var(--cyan);border-radius:2px;cursor:pointer;font-family:Consolas,monospace">⛓ CHAIN</button>
             </td>
-            <td colspan="2" style="font-size:11px;line-height:1.5">${desc}</td>
+            <td colspan="2" style="font-size:11px;line-height:1.5">${desc}${probHTML}</td>
             <td></td><td></td>
             <td class="${cls(groupPL)}" style="font-weight:700">${fmt(groupPL)}</td>
             <td class="${cls(groupPLpct)}">${fmtPct(groupPLpct)}</td>
@@ -1389,6 +1495,147 @@ setInterval(refreshAll,15000);setInterval(loadScanLog,15000);setInterval(()=>doc
 let _curV=null;
 setInterval(async()=>{try{const r=await fetch('/sambot-trading/version.json?t='+Date.now());const d=await r.json();if(!_curV){_curV=d.v}else if(d.v!==_curV){addLog('🔄 New version detected, reloading...','system');setTimeout(()=>location.reload(true),1000)}}catch(e){}},30000);
 setInterval(detectRegime,300000);
+// Refresh underlying prices with each data refresh
+setInterval(fetchUnderlyingPrices,15000);
+
+// ═══ OPTION CHAIN VIEWER ═══
+let _chainInterval=null;
+async function showChain(underlying,expiry){
+    // Create or show modal
+    let modal=document.getElementById('chain-modal');
+    if(!modal){
+        modal=document.createElement('div');
+        modal.id='chain-modal';
+        modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+        modal.innerHTML=`<div id="chain-box" style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;width:90vw;max-width:900px;max-height:85vh;overflow:auto;padding:0">
+            <div id="chain-header" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:var(--bg);z-index:1">
+                <div><span id="chain-title" style="font-family:Orbitron;font-size:14px;color:var(--accent)"></span>
+                <span id="chain-price" style="color:var(--cyan);margin-left:12px;font-size:13px"></span>
+                <span id="chain-update" style="color:var(--dim);margin-left:12px;font-size:10px"></span></div>
+                <button onclick="closeChain()" style="background:none;border:1px solid var(--dim);color:var(--dim);padding:4px 12px;cursor:pointer;border-radius:2px;font-family:Consolas">✕ CLOSE</button>
+            </div>
+            <div id="chain-body" style="padding:12px"></div>
+        </div>`;
+        modal.addEventListener('click',e=>{if(e.target===modal)closeChain()});
+        document.body.appendChild(modal);
+    }
+    modal.style.display='flex';
+    document.getElementById('chain-title').textContent=`⛓ ${underlying} Option Chain`;
+    document.getElementById('chain-body').innerHTML='<div style="text-align:center;padding:40px;color:var(--dim)">Loading chain...</div>';
+    
+    // Load chain data
+    await loadChainData(underlying, expiry);
+    
+    // Auto-refresh every 15s
+    if(_chainInterval)clearInterval(_chainInterval);
+    _chainInterval=setInterval(()=>loadChainData(underlying,expiry),15000);
+}
+
+function closeChain(){
+    const modal=document.getElementById('chain-modal');
+    if(modal)modal.style.display='none';
+    if(_chainInterval){clearInterval(_chainInterval);_chainInterval=null}
+}
+
+async function loadChainData(underlying, expiry){
+    try{
+        const chains=await api('/api/chains');
+        const key=`${underlying}_${expiry}`;
+        const data=chains?.[key];
+        const curPrice=_underlyingPrices[underlying]||0;
+        
+        document.getElementById('chain-price').textContent=curPrice?`$${curPrice.toFixed(2)}`:'';
+        document.getElementById('chain-update').textContent=data?.updated?`Updated: ${new Date(data.updated).toLocaleTimeString()}`:'';
+        
+        if(!data||!data.chain||!data.chain.length){
+            document.getElementById('chain-body').innerHTML=`<div style="text-align:center;padding:40px;color:var(--dim)">
+                No chain data available yet. Chain data syncs every 15 seconds when the publisher runs.
+                <br><br><span style="color:var(--accent)">Underlying: ${underlying} | Expiry: ${expiry}</span>
+            </div>`;
+            return;
+        }
+        
+        // Split into puts and calls
+        const puts=data.chain.filter(o=>o.type==='put').sort((a,b)=>a.strike-b.strike);
+        const calls=data.chain.filter(o=>o.type==='call').sort((a,b)=>a.strike-b.strike);
+        
+        // Find ATM strike
+        const allStrikes=[...new Set(data.chain.map(o=>o.strike))].sort((a,b)=>a-b);
+        const atmStrike=allStrikes.reduce((best,s)=>Math.abs(s-curPrice)<Math.abs(best-curPrice)?s:best, allStrikes[0]);
+        
+        // Build table — calls on left, puts on right (traditional chain layout)
+        let h=`<div style="font-size:10px;color:var(--dim);margin-bottom:8px;text-align:center">
+            ← CALLS | Strike | PUTS → · <span style="color:var(--accent)">■</span> = In Position · ATM ≈ $${atmStrike}
+        </div>`;
+        h+=`<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="border-bottom:2px solid var(--border)">
+            <th style="color:var(--green);text-align:right;padding:4px">Bid</th>
+            <th style="color:var(--green);text-align:right;padding:4px">Ask</th>
+            <th style="color:var(--green);text-align:right;padding:4px">Last</th>
+            <th style="color:var(--green);text-align:right;padding:4px">Vol</th>
+            <th style="color:var(--green);text-align:right;padding:4px">OI</th>
+            <th style="color:var(--green);text-align:right;padding:4px">Δ</th>
+            <th style="color:var(--green);text-align:right;padding:4px">θ</th>
+            <th style="text-align:center;padding:4px;font-weight:700;color:var(--accent)">STRIKE</th>
+            <th style="color:var(--red);padding:4px">Δ</th>
+            <th style="color:var(--red);padding:4px">θ</th>
+            <th style="color:var(--red);padding:4px">Bid</th>
+            <th style="color:var(--red);padding:4px">Ask</th>
+            <th style="color:var(--red);padding:4px">Last</th>
+            <th style="color:var(--red);padding:4px">Vol</th>
+            <th style="color:var(--red);padding:4px">OI</th>
+        </tr></thead><tbody>`;
+        
+        for(const strike of allStrikes){
+            const call=calls.find(o=>o.strike===strike);
+            const put=puts.find(o=>o.strike===strike);
+            const isATM=strike===atmStrike;
+            const isITMcall=strike<curPrice;
+            const isITMput=strike>curPrice;
+            const inPos=call?.inPosition||put?.inPosition;
+            const rowBg=inPos?'rgba(255,140,0,0.12)':isATM?'rgba(0,229,255,0.06)':'';
+            const rowBorder=isATM?'border-top:1px solid var(--cyan);border-bottom:1px solid var(--cyan)':'';
+            
+            h+=`<tr style="background:${rowBg};${rowBorder}">`;
+            // Call side
+            if(call){
+                const cbg=isITMcall?'rgba(0,200,83,0.06)':'';
+                const ip=call.inPosition?'font-weight:700;color:var(--accent);':'';
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};${ip}">${call.bid?.toFixed(2)||'—'}</td>`;
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};${ip}">${call.ask?.toFixed(2)||'—'}</td>`;
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};${ip}">${call.last?.toFixed(2)||'—'}</td>`;
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};color:var(--dim)">${call.volume||'—'}</td>`;
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};color:var(--dim)">${call.openInterest||'—'}</td>`;
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};color:var(--cyan)">${call.delta?.toFixed(3)||'—'}</td>`;
+                h+=`<td style="text-align:right;padding:3px 4px;background:${cbg};color:var(--dim)">${call.theta?.toFixed(3)||'—'}</td>`;
+            }else{
+                h+='<td colspan="7" style="text-align:center;color:var(--border)">—</td>';
+            }
+            // Strike
+            h+=`<td style="text-align:center;padding:3px 8px;font-weight:700;color:${inPos?'var(--accent)':isATM?'var(--cyan)':'var(--fg)'};font-size:12px;border-left:1px solid var(--border);border-right:1px solid var(--border)">
+                ${inPos?'▶ ':''}$${strike}${inPos?' ◀':''}
+            </td>`;
+            // Put side
+            if(put){
+                const pbg=isITMput?'rgba(255,59,92,0.06)':'';
+                const ip=put.inPosition?'font-weight:700;color:var(--accent);':'';
+                h+=`<td style="padding:3px 4px;background:${pbg};color:var(--cyan)">${put.delta?.toFixed(3)||'—'}</td>`;
+                h+=`<td style="padding:3px 4px;background:${pbg};color:var(--dim)">${put.theta?.toFixed(3)||'—'}</td>`;
+                h+=`<td style="padding:3px 4px;background:${pbg};${ip}">${put.bid?.toFixed(2)||'—'}</td>`;
+                h+=`<td style="padding:3px 4px;background:${pbg};${ip}">${put.ask?.toFixed(2)||'—'}</td>`;
+                h+=`<td style="padding:3px 4px;background:${pbg};${ip}">${put.last?.toFixed(2)||'—'}</td>`;
+                h+=`<td style="padding:3px 4px;background:${pbg};color:var(--dim)">${put.volume||'—'}</td>`;
+                h+=`<td style="padding:3px 4px;background:${pbg};color:var(--dim)">${put.openInterest||'—'}</td>`;
+            }else{
+                h+='<td colspan="7" style="text-align:center;color:var(--border)">—</td>';
+            }
+            h+='</tr>';
+        }
+        h+='</tbody></table>';
+        document.getElementById('chain-body').innerHTML=h;
+    }catch(e){
+        document.getElementById('chain-body').innerHTML=`<div style="text-align:center;padding:40px;color:var(--red)">Error loading chain: ${e.message}</div>`;
+    }
+}
 </script>
 </body>
 </html>

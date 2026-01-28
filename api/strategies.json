@@ -1,15 +1,1 @@
-{
-    "wheel": {"enabled": true, "total_trades": 1, "open_trades": 1},
-    "zero_dte": {"enabled": true, "total_trades": 0, "open_trades": 0},
-    "dividend": {"enabled": true, "total_trades": 0, "open_trades": 0},
-    "jade_lizard": {"enabled": true, "total_trades": 0, "open_trades": 0},
-    "bwb": {"enabled": true, "total_trades": 1, "open_trades": 1},
-    "iron_condor": {"enabled": false, "total_trades": 2, "open_trades": 2},
-    "vertical": {"enabled": false, "total_trades": 5, "open_trades": 5},
-    "earnings": {"enabled": false, "total_trades": 0, "open_trades": 0},
-    "gamma_scalp": {"enabled": false, "total_trades": 0, "open_trades": 0},
-    "earnings_buy": {"enabled": false, "total_trades": 0, "open_trades": 0},
-    "pairs": {"enabled": false, "total_trades": 0, "open_trades": 0},
-    "momentum": {"enabled": false, "total_trades": 0, "open_trades": 0},
-    "calendar": {"enabled": false, "total_trades": 0, "open_trades": 0}
-}
+{"iron_condor": {"enabled": true, "total_trades": 2, "open_trades": 2}, "jade_lizard": {"enabled": true, "total_trades": 0, "open_trades": 0}, "bwb": {"enabled": true, "total_trades": 1, "open_trades": 1}, "earnings_buy": {"enabled": true, "total_trades": 0, "open_trades": 0}, "gamma_scalp": {"enabled": true, "total_trades": 0, "open_trades": 0}, "wheel": {"enabled": true, "total_trades": 1, "open_trades": 1}, "earnings": {"enabled": true, "total_trades": 0, "open_trades": 0}, "momentum": {"enabled": true, "total_trades": 0, "open_trades": 0}, "zero_dte": {"enabled": true, "total_trades": 0, "open_trades": 0}, "dividend": {"enabled": true, "total_trades": 0, "open_trades": 0}, "pairs": {"enabled": true, "total_trades": 0, "open_trades": 0}, "calendar": {"enabled": true, "total_trades": 0, "open_trades": 0}, "vertical": {"enabled": true, "total_trades": 5, "open_trades": 5}}
