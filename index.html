@@ -457,16 +457,19 @@ const FB_PATH_MAP={
 };
 
 // Convert Firebase positions dict → Alpaca-style array
-function fbPosToArray(posDict){
-    if(!posDict||typeof posDict!=='object')return [];
-    if(Array.isArray(posDict))return posDict;
-    return Object.entries(posDict).map(([sym,p])=>({
+function fbPosToArray(posData){
+    if(!posData||typeof posData!=='object')return [];
+    // Handle {items: [...]} wrapper from publish_data.py
+    if(posData.items&&Array.isArray(posData.items))return posData.items;
+    if(Array.isArray(posData))return posData;
+    // Handle dict keyed by symbol (older format)
+    return Object.entries(posData).map(([sym,p])=>({
         symbol:sym,
         unrealized_pl:p.unrealized_pnl||p.unrealized_pl||0,
         unrealized_plpc:p.pnl_pct!=null?(p.pnl_pct/100):p.unrealized_plpc||0,
         market_value:p.market_value||0,
         current_price:p.current||p.current_price||0,
-        avg_entry_price:p.avg_entry_price||p.entry||p.cost_basis?((p.cost_basis||0)/Math.abs(p.qty||1)):0,
+        avg_entry_price:p.avg_entry_price||0,
         qty:p.qty||p.quantity||0,
         side:p.side||(p.qty>0?'long':'short'),
         cost_basis:p.cost_basis||0,
@@ -478,6 +481,7 @@ function fbOrdersToArray(ordData){
     if(!ordData)return [];
     if(Array.isArray(ordData))return ordData;
     if(ordData.data&&Array.isArray(ordData.data))return ordData.data;
+    if(ordData.items&&Array.isArray(ordData.items))return ordData.items;
     return Object.values(ordData);
 }
 
