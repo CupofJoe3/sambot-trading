@@ -673,7 +673,10 @@ function renderPos(pos,id,pct=false){
         const info=parseOptionSym(p.symbol);
         if(!info){stocks.push(p);return}
         const key=info.underlying+'_'+info.exp;
-        if(!groups[key])groups[key]={underlying:info.underlying,exp:info.exp,expShort:info.expShort,legs:[]};
+        if(!groups[key]){
+            const dte=Math.max(0,Math.round((new Date(info.exp+'T16:00:00')-new Date())/(86400000)));
+            groups[key]={underlying:info.underlying,exp:info.exp,expShort:info.expShort,dte,legs:[]};
+        }
         groups[key].legs.push({...p,...info});
     });
     
@@ -716,15 +719,57 @@ function renderPos(pos,id,pct=false){
             const sc=shortCalls[0]?.strike||0,lc=longCalls[0]?.strike||0;
             const wingW=sp-lp||lc-sc||10;
             const credit=Math.abs(groupCost)/100;
-            desc=`<b>$${lp}/$${sp} Put</b> · <b>$${sc}/$${lc} Call</b> spread — Exp ${g.expShort}`;
+            const maxProfit=credit*100;
+            const maxLoss=(wingW-credit)*100;
+            const dte=g.dte||'?';
+            desc=`<b>$${lp}/$${sp} Put</b> · <b>$${sc}/$${lc} Call</b> spread — Exp ${g.expShort} (${dte} DTE)`;
             desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Width:</span> $${wingW} · <span style="color:var(--dim)">Safe zone:</span> $${sp}–$${sc}`;
+            desc+=`<br><span class="pos">Max profit:</span> $${maxProfit.toFixed(0)} (credit × 100) · <span class="neg">Max loss:</span> $${maxLoss.toFixed(0)} (wing width − credit × 100)`;
             desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit ($${(credit*0.5).toFixed(2)} debit) or 7 DTE`;
+            desc+=`<br><span style="color:#8899aa">💡 <b>What needs to happen:</b> ${g.underlying} stays between $${sp} and $${sc} until expiry. Time decay works in our favor every day. We sold premium on both sides — if the stock doesn't move too much, we keep the credit.</span>`;
+        }else if(strategy==='PUT SPREAD'){
+            const sp=shortPuts[0]?.strike||0,lp=longPuts[0]?.strike||0;
+            const width=sp-lp;
+            const credit=Math.abs(groupCost)/100;
+            const maxProfit=credit*100;
+            const maxLoss=(width-credit)*100;
+            const dte=g.dte||'?';
+            desc=`<b>Long $${lp} Put · Short $${sp} Put</b> — Exp ${g.expShort} (${dte} DTE)`;
+            desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Width:</span> $${width} · <span style="color:var(--dim)">Breakeven:</span> $${(sp-credit).toFixed(2)}`;
+            desc+=`<br><span class="pos">Max profit:</span> $${maxProfit.toFixed(0)} · <span class="neg">Max loss:</span> $${maxLoss.toFixed(0)}`;
+            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE`;
+            desc+=`<br><span style="color:#8899aa">💡 <b>What needs to happen:</b> ${g.underlying} stays above $${sp} (short strike). We sold the higher put and bought the lower put for protection. If stock stays above $${sp}, both puts expire worthless and we keep the $${credit.toFixed(2)} credit.</span>`;
+        }else if(strategy==='CALL SPREAD'){
+            const sc=shortCalls[0]?.strike||0,lc=longCalls[0]?.strike||0;
+            const width=lc-sc;
+            const credit=Math.abs(groupCost)/100;
+            const maxProfit=credit*100;
+            const maxLoss=(width-credit)*100;
+            const dte=g.dte||'?';
+            desc=`<b>Short $${sc} Call · Long $${lc} Call</b> — Exp ${g.expShort} (${dte} DTE)`;
+            desc+=`<br><span style="color:var(--dim)">Credit:</span> $${credit.toFixed(2)} · <span style="color:var(--dim)">Width:</span> $${width} · <span style="color:var(--dim)">Breakeven:</span> $${(sc+credit).toFixed(2)}`;
+            desc+=`<br><span class="pos">Max profit:</span> $${maxProfit.toFixed(0)} · <span class="neg">Max loss:</span> $${maxLoss.toFixed(0)}`;
+            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE`;
+            desc+=`<br><span style="color:#8899aa">💡 <b>What needs to happen:</b> ${g.underlying} stays below $${sc} (short strike). We sold the lower call and bought the higher call for protection. Time decay erodes the value of what we sold.</span>`;
         }else if(strategy==='CASH-SECURED PUT'){
             const sp=shortPuts[0];
             const premium=parseFloat(sp?.avg_entry_price||0);
-            desc=`<b>Sell $${sp?.strike} Put</b> — Exp ${g.expShort}`;
-            desc+=`<br><span style="color:var(--dim)">Premium:</span> $${premium.toFixed(2)} · <span style="color:var(--dim)">Breakeven:</span> $${(sp?.strike-premium).toFixed(2)}`;
-            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE. If assigned, own shares at discount.`;
+            const breakeven=(sp?.strike-premium).toFixed(2);
+            const maxProfit=premium*100;
+            const dte=g.dte||'?';
+            desc=`<b>Sell $${sp?.strike} Put</b> — Exp ${g.expShort} (${dte} DTE)`;
+            desc+=`<br><span style="color:var(--dim)">Premium:</span> $${premium.toFixed(2)} · <span style="color:var(--dim)">Breakeven:</span> $${breakeven}`;
+            desc+=`<br><span class="pos">Max profit:</span> $${maxProfit.toFixed(0)} (keep entire premium) · <span class="neg">Risk:</span> Assigned at $${sp?.strike} (own 100 shares)`;
+            desc+=`<br><span style="color:var(--dim)">Target:</span> Close at 50% profit or 7 DTE. If assigned, own shares at $${breakeven} effective cost.`;
+            desc+=`<br><span style="color:#8899aa">💡 <b>What needs to happen:</b> ${g.underlying} stays above $${sp?.strike}. The put expires worthless and we keep $${premium.toFixed(2)} per share ($${maxProfit.toFixed(0)} total). If stock drops below $${sp?.strike}, we buy 100 shares at $${breakeven} effective price — still a discount.</span>`;
+        }else if(strategy==='COVERED CALL'){
+            const sc=shortCalls[0];
+            const premium=parseFloat(sc?.avg_entry_price||0);
+            const dte=g.dte||'?';
+            desc=`<b>Sell $${sc?.strike} Call</b> — Exp ${g.expShort} (${dte} DTE)`;
+            desc+=`<br><span style="color:var(--dim)">Premium:</span> $${premium.toFixed(2)} · <span style="color:var(--dim)">Called away at:</span> $${sc?.strike}`;
+            desc+=`<br><span class="pos">Max profit:</span> $${(premium*100).toFixed(0)} + upside to $${sc?.strike}`;
+            desc+=`<br><span style="color:#8899aa">💡 <b>What needs to happen:</b> ${g.underlying} stays below $${sc?.strike}. Call expires worthless, we keep shares + premium. If called away at $${sc?.strike}, we sell shares at a profit.</span>`;
         }else{
             desc=g.legs.map(l=>`${parseInt(l.qty)<0?'Short':'Long'} $${l.strike} ${l.type}`).join(' · ')+` — Exp ${g.expShort}`;
         }
