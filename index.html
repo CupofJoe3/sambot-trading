@@ -266,8 +266,10 @@
     </div>
     <div class="card">
         <div class="card-h"><span class="card-t">Open Positions</span></div>
+        <div style="max-height:500px;overflow-y:auto">
         <table><thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Avg Cost</th><th>Current</th><th>P&L</th><th>P&L %</th><th>Value</th><th></th></tr></thead>
         <tbody id="d-pos"><tr><td colspan="9" style="text-align:center;color:var(--dim);padding:28px">Awaiting data...</td></tr></tbody></table>
+        </div>
     </div>
 
     <!-- LIVE CHART PANEL (hidden by default, shown on symbol click) -->
@@ -307,8 +309,10 @@
 <div class="panel" id="p-positions">
     <div class="card">
         <div class="card-h"><span class="card-t">All Positions</span></div>
+        <div style="max-height:600px;overflow-y:auto">
         <table><thead><tr><th>Symbol</th><th>Side</th><th>Qty</th><th>Cost</th><th>Current</th><th>P&L</th><th>P&L %</th><th>Value</th><th>% Port</th><th></th></tr></thead>
         <tbody id="pos-body"><tr><td colspan="10" style="text-align:center;color:var(--dim);padding:28px">Loading...</td></tr></tbody></table>
+        </div>
     </div>
 </div>
 
@@ -437,31 +441,109 @@ function showTab(el,id){
 const fbApp=firebase.initializeApp({databaseURL:'https://sambot-tasks-default-rtdb.firebaseio.com'});
 const db=firebase.database();
 
-// Primary: static JSON files (correct Alpaca format from publish_data.py)
-// Firebase: realtime listener triggers re-fetch of static files
-async function api(p){
-    const c=new AbortController();const t=setTimeout(()=>c.abort(),8000);
-    try{
-        const url=(API?API+p:p)+'.json';
-        const r=await fetch(url,{signal:c.signal});clearTimeout(t);
-        if(!r.ok)return {error:r.status};
-        return r.json();
-    }catch(e){clearTimeout(t);return {error:'offline'}}
+// ═══ ALL DATA FROM FIREBASE ═══
+const FB_PATH_MAP={
+    '/api/status':'trading/status',
+    '/api/positions':'trading/positions',
+    '/api/orders':'trading/orders',
+    '/api/strategies':'trading/strategies',
+    '/api/backtest-results':'trading/backtest_results',
+    '/api/activity':'trading/activity',
+    '/api/regime':'trading/regime',
+    '/api/equity-history':'trading/equity_history',
+    '/api/iv-scan':'trading/iv_scan',
+    '/api/charts':'trading/charts',
+    '/api/scan-log':'trading/activity',
+};
+
+// Convert Firebase positions dict → Alpaca-style array
+function fbPosToArray(posDict){
+    if(!posDict||typeof posDict!=='object')return [];
+    if(Array.isArray(posDict))return posDict;
+    return Object.entries(posDict).map(([sym,p])=>({
+        symbol:sym,
+        unrealized_pl:p.unrealized_pnl||p.unrealized_pl||0,
+        unrealized_plpc:p.pnl_pct!=null?(p.pnl_pct/100):p.unrealized_plpc||0,
+        market_value:p.market_value||0,
+        current_price:p.current||p.current_price||0,
+        avg_entry_price:p.avg_entry_price||p.entry||p.cost_basis?((p.cost_basis||0)/Math.abs(p.qty||1)):0,
+        qty:p.qty||p.quantity||0,
+        side:p.side||(p.qty>0?'long':'short'),
+        cost_basis:p.cost_basis||0,
+    }));
 }
 
-// Backtest results use Firebase directly (larger, less frequent updates)
+// Convert Firebase orders dict → array
+function fbOrdersToArray(ordData){
+    if(!ordData)return [];
+    if(Array.isArray(ordData))return ordData;
+    if(ordData.data&&Array.isArray(ordData.data))return ordData.data;
+    return Object.values(ordData);
+}
+
+// Firebase cache for realtime data
+const fbCache={};
+
+async function api(p){
+    // Check cache first (populated by realtime listeners)
+    if(fbCache[p]!==undefined)return fbCache[p];
+    const fbPath=FB_PATH_MAP[p];
+    if(!fbPath)return {error:'unknown path'};
+    try{
+        const snap=await db.ref(fbPath).once('value');
+        let val=snap.val();
+        if(val===null)return {error:'empty'};
+        // Transform positions and orders
+        if(p==='/api/positions')val=fbPosToArray(val);
+        if(p==='/api/orders')val=fbOrdersToArray(val);
+        return val;
+    }catch(e){return {error:e.message}}
+}
+
 async function apiFB(path){
     try{const snap=await db.ref(path).once('value');return snap.val()||{error:'empty'}}
     catch(e){return {error:e.message}}
 }
 
-async function apiPost(p,d){return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
+async function apiPost(p,d){
+    try{return(await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})).json()}
+    catch(e){return {error:e.message}}
+}
 
 // ═══ FIREBASE REALTIME LISTENERS ═══
 function setupRealtimeListeners(){
-    // When publish_data.py updates Firebase, trigger dashboard refresh
-    db.ref('trading/status/timestamp').on('value',snap=>{
-        if(snap.val()){refreshAll();addLog('📡 Data synced','info')}
+    // Status — cache + refresh dashboard
+    db.ref('trading/status').on('value',snap=>{
+        const val=snap.val();
+        if(val){fbCache['/api/status']=val;refreshAll();addLog('📡 Status synced','info')}
+    });
+    // Positions — cache as Alpaca-style array
+    db.ref('trading/positions').on('value',snap=>{
+        const val=snap.val();
+        if(val){fbCache['/api/positions']=fbPosToArray(val);addLog('📡 Positions synced','info')}
+    });
+    // Orders
+    db.ref('trading/orders').on('value',snap=>{
+        const val=snap.val();
+        if(val){fbCache['/api/orders']=fbOrdersToArray(val);loadOrders()}
+    });
+    // Strategies
+    db.ref('trading/strategies').on('value',snap=>{
+        const val=snap.val();
+        if(val){fbCache['/api/strategies']=val;loadStrats()}
+    });
+    // Activity log
+    db.ref('trading/activity').on('value',snap=>{
+        const val=snap.val();
+        if(val){
+            fbCache['/api/activity']=val;
+            // Show recent entries in log
+            const entries=Object.values(val).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0)).slice(0,5);
+            entries.reverse().forEach(e=>{
+                const type=e.type||'info';
+                addLog(e.message||'',type);
+            });
+        }
     });
     addLog('🔥 Firebase realtime connected','system');
 }
@@ -693,18 +775,25 @@ const STRAT_MAP={
 };
 async function loadStrats(){
     try{
-        const strats=await api('/api/strategies');const grid=document.getElementById('strat-grid');let h='';
-        Object.entries(strats).forEach(([k,v])=>{
-            const i=STRAT_MAP[k]||{name:k,icon:'📊',desc:'',badge:'y'};
-            h+=`<div class="strat ${v.enabled?'on':''}" onclick="showStratDetail('${k}')">
+        let strats={};try{strats=await api('/api/strategies')||{}}catch(e){}
+        if(strats.error)strats={};
+        const grid=document.getElementById('strat-grid');let h='';
+        // Show ALL strategies from STRAT_MAP, merge with Firebase data
+        Object.entries(STRAT_MAP).forEach(([k,i])=>{
+            const v=strats[k]||{enabled:false,total_trades:0,open_trades:0};
+            const isDisabled=i.badge==='r';
+            const isEnabled=v.enabled&&!isDisabled;
+            const borderColor=isDisabled?'var(--red)':isEnabled?'#ff8c00':'var(--border)';
+            const opacity=isDisabled?'0.6':'1';
+            h+=`<div class="strat ${isEnabled?'on':''}" onclick="showStratDetail('${k}')" style="opacity:${opacity};border-left-color:${borderColor}">
                 <div class="strat-icon">${i.icon}</div>
-                <div class="strat-body"><div class="strat-name">${i.name}</div><div class="strat-desc">${i.desc}</div>
+                <div class="strat-body"><div class="strat-name" style="${isDisabled?'color:var(--red)':''}">${i.name}</div><div class="strat-desc">${i.desc}</div>
                 <div class="strat-meta"><span class="badge badge-${i.badge}">${i.badge==='g'?'APPROVED':i.badge==='r'?'REJECTED':'PENDING'}</span>
-                <span style="color:var(--dim);font-size:10px">Trades: ${v.total_trades}</span></div></div>
-                <label class="sw" onclick="event.stopPropagation()"><input type="checkbox" ${v.enabled?'checked':''} onchange="toggleStrat('${k}',this.checked)"><span class="sw-s"></span></label>
+                <span style="color:var(--dim);font-size:10px">Trades: ${v.total_trades||0}</span></div></div>
+                <label class="sw" onclick="event.stopPropagation()"><input type="checkbox" ${isEnabled?'checked':''} ${isDisabled?'disabled':''} onchange="toggleStrat('${k}',this.checked)"><span class="sw-s"></span></label>
             </div>`;
         });grid.innerHTML=h;
-    }catch(e){}
+    }catch(e){console.error('loadStrats error',e)}
 }
 function showStratDetail(k){const i=STRAT_MAP[k];if(!i)return;
     document.getElementById('strat-detail').innerHTML=`<div style="display:flex;gap:12px;align-items:center">
@@ -735,7 +824,7 @@ async function runScan(){
 
 // ═══ BACKTESTS ═══
 async function loadBT(){
-    try{let d=await api('/api/backtest-results');if(!d||!d.results)d=await apiFB('trading/backtest_results');const g=document.getElementById('bt-grid');
+    try{let d=await api('/api/backtest-results');const g=document.getElementById('bt-grid');
     if(!d||!d.results){g.innerHTML='<div class="card span2" style="color:var(--dim);padding:30px">No backtest data</div>';return}
     // Sort by PnL descending
     const entries=Object.entries(d.results).sort((a,b)=>(b[1].stats?.total_pnl||0)-(a[1].stats?.total_pnl||0));
@@ -977,6 +1066,56 @@ async function loadCharts(){
     }catch(e){grid.innerHTML='<div style="text-align:center;color:#ff3b5c;padding:30px;grid-column:1/-1">Error loading charts: '+e.message+'</div>'}
 }
 
+// ═══ JOURNAL ═══
+async function loadJournal(){
+    const body=document.getElementById('j-body');
+    try{
+        const orders=await api('/api/orders');
+        if(!orders||!orders.length||orders.error){
+            body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled orders yet</td></tr>';return;
+        }
+        const filled=orders.filter(o=>o.status==='filled').sort((a,b)=>new Date(b.filled_at||b.created_at)-new Date(a.filled_at||a.created_at));
+        if(!filled.length){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">No filled orders yet</td></tr>';return}
+        let h='';
+        for(const o of filled.slice(0,100)){
+            const date=new Date(o.filled_at||o.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+            let sym=o.symbol||'';
+            let underlying=sym;
+            let strike='';
+            // Parse option symbols
+            const optMatch=sym.match(/^([A-Z]+)(\d{6})([PC])(\d{8})$/);
+            if(optMatch){
+                underlying=optMatch[1];
+                const pc=optMatch[3]==='P'?'Put':'Call';
+                strike='$'+(parseInt(optMatch[4])/1000);
+                sym=`${underlying} ${strike} ${pc}`;
+            }
+            // Detect strategy
+            let strat='—';
+            const legs=o.legs||[];
+            if(o.order_class==='mleg'&&legs.length>=4)strat='Iron Condor';
+            else if(o.order_class==='mleg'&&legs.length===2)strat='Spread';
+            else if(optMatch&&o.side==='sell'&&optMatch[3]==='P')strat='Wheel (CSP)';
+            else if(optMatch&&o.side==='sell'&&optMatch[3]==='C')strat='Wheel (CC)';
+            else if(optMatch)strat='Option';
+            else strat='Stock';
+            const price=o.filled_avg_price?fmt(parseFloat(o.filled_avg_price)):'—';
+            const side=o.side||'';
+            const reason=o.order_class==='mleg'?'Multi-leg spread':side==='sell'?'Sell premium':'Buy';
+            h+=`<tr>
+                <td>${date}</td>
+                <td>${strat}</td>
+                <td style="font-weight:700;color:var(--cyan)">${sym}</td>
+                <td>${side==='buy'?price:'—'}</td>
+                <td>${side==='sell'?price:'—'}</td>
+                <td>—</td>
+                <td style="color:var(--dim)">${reason}</td>
+            </tr>`;
+        }
+        body.innerHTML=h;
+    }catch(e){body.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--dim);padding:28px">Error loading journal: '+e.message+'</td></tr>'}
+}
+
 function loadStockChart(symbol){
     // Show the chart panel
     const panel=document.getElementById('live-chart-panel');
@@ -1077,7 +1216,7 @@ function updateEquityChart(equity){
 // ═══ INIT ═══
 addLog('SamBot Trading Terminal initialized','system');
 refreshAll().then(()=>{addLog('Connected to Alpaca ✅','trade');addLog('5 strategies active (Wheel, 0DTE, Dividend, Jade Lizard, BWB) | 8 disabled','info')});
-loadChartIndex().then(()=>{loadOrders()});loadStrats();loadBT();setTimeout(initChart,500);
+loadChartIndex().then(()=>{loadOrders();loadJournal()});loadStrats();loadBT();setTimeout(initChart,500);
 // Load scan log immediately then every 15s
 setTimeout(()=>{lastScanLogLen=0;loadScanLog()},2000);
 setTimeout(detectRegime,4000);
